@@ -12,10 +12,12 @@ FRP studies how to measure and potentially reduce unauthorised facial identity r
 - [002 — CID feasibility and threat model](research/002-cid-feasibility-threat-model.md)
 
 - [003 — Wan 2.1 image-to-video conditioning architecture](research/003-wan21-i2v-architecture.md)
+- [004 — Conditioning-pathway ablation design](research/004-conditioning-ablation-design.md)
 
 ### Experiment designs
 
 - [001 — Baseline identity preservation](experiments/001-baseline-protocol.md)
+- [002 — Conditioning-pathway ablation protocol](experiments/002-conditioning-ablation-protocol.md)
 
 ### Research principles
 
