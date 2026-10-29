@@ -22,3 +22,11 @@ FRP studies how to measure and potentially reduce unauthorised facial identity r
 ### Research principles
 
 Use authorised adult or appropriately licensed datasets; keep portraits and biometric embeddings private; record methods and negative results; distinguish evidence from hypotheses; and evaluate generation quality, uncertainty, and bypass risks alongside identity similarity.
+
+## Project guidance for human and AI contributors
+
+- [Agent instructions](AGENTS.md) — expectations for coding agents, experimental discipline and privacy.
+- [Project context](PROJECT_CONTEXT.md) — FRP goals, CID hypotheses and current scientific position.
+- [Roadmap](ROADMAP.md) — research and engineering phases, status and milestone exit criteria.
+
+**Next engineering milestone:** Create a CPU-only Python experiment harness in GitHub Codespaces. The research plans are not experimental results; a working prevention mechanism has not yet been demonstrated.
