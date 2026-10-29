@@ -11,6 +11,8 @@ FRP studies how to measure and potentially reduce unauthorised facial identity r
 - [001 — Measuring facial identity replication](research/001-identity-replication-measurement.md)
 - [002 — CID feasibility and threat model](research/002-cid-feasibility-threat-model.md)
 
+- [003 — Wan 2.1 image-to-video conditioning architecture](research/003-wan21-i2v-architecture.md)
+
 ### Experiment designs
 
 - [001 — Baseline identity preservation](experiments/001-baseline-protocol.md)
