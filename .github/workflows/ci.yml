@@ -48,3 +48,5 @@ jobs:
         run: pytest
       - name: CLI dry-run smoke test
         run: frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
+      - name: Simulated pipeline smoke test (synthetic fixtures only)
+        run: frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir "$RUNNER_TEMP/frp-simulated-report"

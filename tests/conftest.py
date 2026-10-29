@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+
+from frp.manifest import parse_manifest
+from frp.results import ResultSet, parse_result_set_json
+from frp.simulation import simulate_experiment
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_MANIFEST = REPO_ROOT / "examples" / "manifests" / "synthetic-dry-run.yaml"
@@ -97,3 +102,50 @@ def write_manifest(tmp_path: Path):
         return path
 
     return _write
+
+
+@pytest.fixture
+def small_manifest_data() -> dict[str, Any]:
+    """3 identities x 1 prompt x 2 seeds = 6 trial groups (groups 1-2 are identity 1, etc.)."""
+    data = copy.deepcopy(_BASE)
+    data["identities"] = [{"pseudonym": f"SYN-00{i}"} for i in (1, 2, 3)]
+    data["prompts"] = data["prompts"][:1]
+    data["seeds"] = [1, 2]
+    data["frame_indices"] = [0, 10, 20]
+    return data
+
+
+def results_dict(manifest_data: dict[str, Any], scenario: str = "all-valid") -> dict[str, Any]:
+    """JSON-ready dict of a simulated ResultSet, for editing in schema/aggregation tests."""
+    return simulate_experiment(parse_manifest(manifest_data), scenario).model_dump(mode="json")
+
+
+def load_results(data: dict[str, Any]) -> ResultSet:
+    return parse_result_set_json(json.dumps(data))
+
+
+def find_run(data: dict[str, Any], group: int, variant: str) -> dict[str, Any]:
+    return next(r for r in data["runs"] if r["group_index"] == group and r["variant"] == variant)
+
+
+def set_frames(run: dict[str, Any], *values: float | str) -> None:
+    """Replace a run's frames: a float is a valid face with that similarity, a str a status."""
+    run["frames"] = [
+        {
+            "frame_index": frame["frame_index"],
+            "face_status": "valid" if isinstance(value, float) else value,
+            "similarity": value if isinstance(value, float) else None,
+        }
+        for frame, value in zip(run["frames"], values, strict=True)
+    ]
+
+
+def fail_run(run: dict[str, Any]) -> None:
+    run["execution"] = {
+        "status": "failed",
+        "artefact": None,
+        "failure_category": "other",
+        "gpu_seconds": None,
+    }
+    set_frames(run, *["not_evaluated"] * len(run["frames"]))
+    run["quality"] = {"status": "not_evaluated", "score": None}

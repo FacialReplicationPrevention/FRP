@@ -1,7 +1,7 @@
-"""Command-line interface. Dry-run planning only: no models, images or inference.
+"""Command-line interface. Dry-run planning and simulated pipeline only: never runs inference.
 
-Exit codes: 0 success; 1 invalid manifest or plan; 2 usage error; 3 not ready
-(only with ``--require-ready``).
+Exit codes: 0 success; 1 invalid manifest, plan or results; 2 usage error; 3 not ready
+(only with ``--require-ready``); 4 report files could not be written.
 """
 
 from __future__ import annotations
@@ -13,13 +13,18 @@ from collections.abc import Sequence
 from typing import Any, TextIO
 
 from frp import __version__
+from frp.aggregation import aggregate
 from frp.manifest import ExperimentManifest, ManifestError, load_manifest, unset_execution_fields
 from frp.planner import PlanInvariantError, PlannedRun, RunPlan, generate_run_plan
+from frp.reporting import CSV_FILENAME, MARKDOWN_FILENAME, SIMULATED_BANNER, write_reports
+from frp.results import ResultValidationError
+from frp.simulation import DEFAULT_SCENARIO, SCENARIOS, simulate_experiment
 
 EXIT_OK = 0
 EXIT_INVALID = 1
 EXIT_USAGE = 2
 EXIT_NOT_READY = 3
+EXIT_OUTPUT = 4
 
 NOTICE = (
     "DRY RUN - planning only. No model was loaded, no inference was run, no images or "
@@ -144,7 +149,10 @@ def _render_text(report: dict[str, Any], out: TextIO) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="frp",
-        description="FRP CPU-only harness. Planning/dry-run only; never runs inference.",
+        description=(
+            "FRP CPU-only harness. Dry-run planning and simulated pipeline only; "
+            "never runs inference."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"frp {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -176,7 +184,73 @@ def _build_parser() -> argparse.ArgumentParser:
             "presence and format only, not consent, licence validity or hash correctness"
         ),
     )
+    simulate = subcommands.add_parser(
+        "simulate",
+        help="run the simulated pipeline on synthetic fixtures and write aggregate reports",
+    )
+    simulate.add_argument("manifest", help="path to a YAML/JSON experiment manifest")
+    simulate.add_argument(
+        "--report-dir",
+        required=True,
+        help=f"directory for {MARKDOWN_FILENAME} and {CSV_FILENAME} (created if missing)",
+    )
+    simulate.add_argument(
+        "--scenario",
+        choices=tuple(SCENARIOS),
+        default=DEFAULT_SCENARIO,
+        help=f"synthetic fixture scenario (default: {DEFAULT_SCENARIO})",
+    )
+    simulate.add_argument("--overwrite", action="store_true", help="replace existing report files")
     return parser
+
+
+def _print_problems(heading: str, problems: Sequence[str]) -> None:
+    print(heading, file=sys.stderr)
+    for problem in problems:
+        print(f"  - {problem}", file=sys.stderr)
+
+
+def _simulate(args: argparse.Namespace) -> int:
+    try:
+        manifest = load_manifest(args.manifest)
+        results = simulate_experiment(manifest, args.scenario)
+    except ManifestError as exc:
+        _print_problems("frp: invalid manifest:", exc.problems)
+        return EXIT_INVALID
+    except PlanInvariantError as exc:
+        _print_problems("frp: run plan failed pairing invariants:", exc.problems)
+        return EXIT_INVALID
+    except ResultValidationError as exc:
+        _print_problems("frp: simulated results failed validation:", exc.problems)
+        return EXIT_INVALID
+    summary = aggregate(results)
+    try:
+        write_reports(summary, args.report_dir, overwrite=args.overwrite)
+    except FileExistsError:
+        print(
+            "frp: error: report files already exist in the report directory "
+            "(pass --overwrite to replace them)",
+            file=sys.stderr,
+        )
+        return EXIT_OUTPUT
+    except OSError as exc:
+        print(f"frp: error: cannot write reports ({type(exc).__name__})", file=sys.stderr)
+        return EXIT_OUTPUT
+    executed = sum(v.execution_counts["succeeded"] for v in summary.variants)
+    print(
+        "\n".join(
+            (
+                SIMULATED_BANNER,
+                "Synthetic fixtures only: no model, image, video, face or embedding was used.",
+                "",
+                f"Experiment:  {summary.experiment_id} (scenario {summary.simulation_scenario})",
+                f"Planned runs: {summary.planned_runs}  Simulated successes: {executed}  "
+                f"Trial groups: {summary.trial_groups}",
+                f"Wrote {MARKDOWN_FILENAME} and {CSV_FILENAME} to the report directory.",
+            )
+        )
+    )
+    return EXIT_OK
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -185,6 +259,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code or 0)
+
+    if args.command == "simulate":
+        return _simulate(args)
 
     if not args.dry_run:
         print(
