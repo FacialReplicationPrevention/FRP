@@ -30,3 +30,22 @@ Use authorised adult or appropriately licensed datasets; keep portraits and biom
 - [Roadmap](ROADMAP.md) — research and engineering phases, status and milestone exit criteria.
 
 **Next engineering milestone:** Create a CPU-only Python experiment harness in GitHub Codespaces. The research plans are not experimental results; a working prevention mechanism has not yet been demonstrated.
+
+## Local development (CPU-only harness — planning/dry-run only)
+
+The `frp` package validates experiment manifests and prints deterministic A/B/C/D run plans. It runs **no** inference, downloads **no** model weights and processes **no** images or biometric data; **no scientific outcome has been measured**. Details: [docs/harness.md](docs/harness.md).
+
+Requires Python 3.11+. In a Codespace, [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) runs the install step automatically. Elsewhere:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+python -m pip install -c constraints.txt -e ".[dev]"   # pinned, CPU-only dependencies
+
+ruff check . && ruff format --check .                     # lint + formatting
+pytest                                                    # synthetic, non-biometric unit tests
+
+frp plan examples/manifests/synthetic-dry-run.yaml --dry-run                 # text summary
+frp plan examples/manifests/synthetic-dry-run.yaml --dry-run --format json   # machine-readable
+```
+
+The example manifest uses synthetic pseudonyms (`SYN-001`…) and leaves every execution field explicitly unset (`null`), so the dry run reports **NOT READY**. Add `--require-ready` to fail (exit 3) until all execution fields are filled with real, selected values. Real manifests referencing participants belong in private storage, not in this repository.

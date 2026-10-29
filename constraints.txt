@@ -1,0 +1,16 @@
+# Exact versions used for local development and CI (tested on Python 3.11-3.14).
+# pyproject.toml declares compatible ranges; this file pins the tested set.
+# Install with:  python -m pip install -c constraints.txt -e ".[dev]"
+# Update deliberately: bump a pin, run ruff + pytest, and commit the change in its own PR.
+annotated-types==0.8.0
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pydantic==2.14.1
+pydantic-core==2.50.1
+Pygments==2.21.0
+pytest==9.2.0
+PyYAML==6.0.3
+ruff==0.17.3
+typing-extensions==4.16.0
+typing-inspection==0.4.4

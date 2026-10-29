@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | 0. Initial research | **Documented** | Frame problem and design scientific tests |
 | 1. Portable project context | **Documented** | Give humans and coding agents shared instructions and decisions |
-| 2. CPU experiment harness | **Next — not implemented** | Reproducible config, variant planning, unit tests and validation |
+| 2. CPU experiment harness | **In progress — first increment under review ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))** | Reproducible config, variant planning, unit tests and validation |
 | 3. GPU instrumentation and baseline | **Not started** | Verify Wan pathways and generate authorised baseline results |
 | 4. Conditioning-pathway experiment | **Not started** | Test A/B/C/D and jointly measure identity + utility |
 | 5. Intrinsic model mitigation | **Research hypothesis** | Evaluate training-time/model-weight changes |
@@ -43,12 +43,12 @@
 
 ### Deliverables
 
-- [ ] Add a minimal, pinned Python package (`pyproject.toml`, `src/frp/`, `tests/`).
-- [ ] Configure reproducible Codespaces development (`.devcontainer/`) without large GPU/model dependencies.
-- [ ] Add `pytest` and `ruff`; automate checks via GitHub Actions on synthetic/unit fixtures only.
-- [ ] Add strict, versioned experiment manifest parsing and validation (e.g. Pydantic/YAML), with hashes and explicit unset values.
-- [ ] Implement A/B/C/D variant mapping with invariant checks; in each variant only selected image-conditioning input changes.
-- [ ] Implement deterministic planning/seed management, input validation and structured run metadata.
+- [x] Add a minimal, pinned Python package (`pyproject.toml`, `src/frp/`, `tests/`). ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
+- [x] Configure reproducible Codespaces development (`.devcontainer/`) without large GPU/model dependencies. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
+- [x] Add `pytest` and `ruff`; automate checks via GitHub Actions on synthetic/unit fixtures only. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
+- [x] Add strict, versioned experiment manifest parsing and validation (e.g. Pydantic/YAML), with hashes and explicit unset values. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
+- [x] Implement A/B/C/D variant mapping with invariant checks; in each variant only selected image-conditioning input changes. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1); planning level only — not yet enforced on a real executor)
+- [x] Implement deterministic planning/seed management, input validation and structured run metadata. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
 - [ ] Define adapter interfaces for Wan inference, face detection, identity evaluation and video-quality evaluation **without** making GPU execution a dependency of tests.
 - [ ] Build mock/dry-run execution and tests for detection failures, missing scores, identity-level aggregation, report generation and private-data redaction.
 - [ ] Define an aggregate-only, privacy-reviewed Markdown/CSV report format.

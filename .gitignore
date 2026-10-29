@@ -1,0 +1,61 @@
+# Python / tooling
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/secrets/
+credentials*.json
+
+# Model weights and checkpoints
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf
+/checkpoints/
+/weights/
+/models/
+
+# Private data, participant material and generated media (keep in private storage)
+/data/
+/private/
+/datasets/
+/outputs/
+/runs/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.gif
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.heic
+*.npy
+*.npz
+
+# Editors / OS
+.DS_Store
+.idea/

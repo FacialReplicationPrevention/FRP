@@ -1,0 +1,20 @@
+{
+  "name": "FRP CPU-only harness",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "hostRequirements": {
+    "cpus": 2
+  },
+  "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -c constraints.txt -e \".[dev]\"",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"]
+      }
+    }
+  }
+}

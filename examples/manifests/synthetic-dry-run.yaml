@@ -1,0 +1,50 @@
+# SYNTHETIC EXAMPLE - for exercising the FRP dry-run planner only.
+#
+# - Identity pseudonyms (SYN-*) are synthetic and refer to no real person.
+# - Prompts and seeds are illustrative; they are NOT the pre-registered Experiment 002 values.
+# - All execution fields are explicitly unset (null) because they have not been selected.
+#   Do not fill them from guesses (see experiments/002-conditioning-ablation-protocol.md).
+# - Real manifests that reference consenting participants belong in private storage,
+#   not in this public repository.
+schema_version: "1.0"
+experiment_id: FRP-EXP-002-SYNTHETIC-EXAMPLE
+status: planned
+
+variants: [A, B, C, D]
+identities:
+  - pseudonym: SYN-001
+  - pseudonym: SYN-002
+  - pseudonym: SYN-003
+prompts:
+  - id: P01-neutral-motion
+    text: "A person in a softly lit room slowly turns their head and smiles."
+seeds: [1001, 2002]
+
+upstream_repository: Wan-Video/Wan2.1
+upstream_commit_sha: null
+checkpoint: Wan-AI/Wan2.1-I2V-14B-480P
+checkpoint_hashes: null
+model_license_reviewed: false
+
+consent_record_location: private_only
+number_of_identities: null
+image_count_per_identity: 1
+
+prompt_template_version: null
+alteration_method_version: null
+alteration_parameters: null
+sampler: null
+sampling_steps: null
+guidance_scale: null
+frame_count: null
+resolution: null
+precision: null
+
+face_evaluator_revision: null
+face_detection_settings: null
+calibration_dataset_version: null
+frame_indices: null
+quality_rubric_version: null
+analysis_plan_version: null
+gpu_model: null
+software_environment_hash: null
