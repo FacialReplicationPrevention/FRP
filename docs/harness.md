@@ -162,8 +162,11 @@ an `info` record (name, revision, simulated flag) that is copied into the result
 | `FaceIdentityEvaluator` | artefact reference, identity pseudonym, frame indices | one `FrameEvaluation` per frame, in order | Not told the variant. Detection status is separate from similarity |
 | `VideoQualityEvaluator` | artefact reference only | `QualityEvaluation` | Blind to variant and identity; unscorable output is a status, never an invented score |
 
-The orchestrator (`frp.pipeline.execute_plan`) verifies the plan, executes runs in plan order
-and assigns exactly one result record per planned run. Adapter exceptions become `failed` runs
+The orchestrator (`frp.pipeline.execute_plan`) verifies the plan and runs a **preflight**
+before any adapter is called: frame indices must be non-empty, non-negative, strictly
+increasing and below `frame_count` when it is known, and component provenance must satisfy the
+`ResultSet` rules below (no mixing of simulated and real adapters). It then executes runs in
+plan order and assigns exactly one result record per planned run. Adapter exceptions become `failed` runs
 (`executor_error`) or `error` evaluations **without** their messages, which could contain
 paths or private data. Adapter contract violations (wrong frame list, executor claiming
 `not_executed`) raise `ResultValidationError`. `max_runs` simulates an interrupted experiment:
@@ -182,11 +185,12 @@ pseudonyms, prompt text, media or embeddings. Persisting them to private storage
 | `QualityEvaluation` | `status` ∈ `scored`, `unscorable`, `error`, `not_evaluated`; `score` only when `scored`, and within the evaluator's declared scale |
 | `ExecutionRecord` | `succeeded` requires an artefact reference (URI form, so a bare file path is rejected); `failed` requires a `failure_category` (fixed vocabulary, no free text); `not_executed` has no runtime. `gpu_seconds` is optional |
 | `RunResult` | Conditioning must match the protocol table for its variant; run id must match group and variant; a run that did not succeed must have every frame and quality `not_evaluated` |
-| `ResultSet` | `result_schema_version: "1.0"`, `protocol: wan2.1-i2v-clip-vae-2x2` (executor `model_family` must be `wan2.1-i2v`), plan hashes, declared `frame_indices` and their source, adapter info. Every group has exactly one A, B, C and D record with identical identity, prompt and seed. Duplicate run ids are rejected. Any simulated component forces `simulated: true` and a `simulation_scenario` |
+| `ResultSet` | `result_schema_version: "1.0"`, `protocol: wan2.1-i2v-clip-vae-2x2` (executor `model_family` must be `wan2.1-i2v`), plan hashes, declared `frame_indices` and their source, adapter info. Every group has exactly one A, B, C and D record with identical identity, prompt and seed. Duplicate run ids are rejected. Simulated and non-simulated adapters may not be mixed, and `simulated` must equal every adapter's flag in both directions; `simulation_scenario` is required for, and only for, simulated results |
 
 `verify_results_against_plan(results, plan, manifest)` additionally rejects missing, orphaned,
-duplicate or mismatched records and hash mismatches. With a manifest, frame indices must equal
-the manifest's when it sets them; for **non-simulated** results the manifest must set them and
+duplicate or mismatched records and hash mismatches. With a manifest, frame indices must be
+below `frame_count` when it is set and must equal the manifest's `frame_indices` when it sets
+them; for **non-simulated** results the manifest must set them and
 the evaluator revisions must equal `face_evaluator_revision` and `quality_rubric_version`.
 Strictness matches the manifest: unknown keys, type coercion and non-finite numbers are
 rejected, and errors never echo input values or unknown key names.
@@ -198,8 +202,10 @@ variant position, frame position); valid-face "similarities" are SHA-256-derived
 [0.1, 0.9] and quality "scores" are integers on a simulated 1–5 rubric. Fixture values do **not**
 depend on the variant's conditioning, so any between-variant difference is an artefact.
 `gpu_seconds` is left `null` rather than inventing a hardware cost. If the manifest leaves
-`frame_indices` unset, the Experiment 002 candidate set `0, 20, 40, 60, 80` is used and
-recorded as `simulation_default`.
+`frame_indices` unset, the Experiment 002 candidate set `0, 20, 40, 60, 80` (for 81 frames) is
+scaled proportionally to `frame_count` when that is set (e.g. `frame_count: 9` gives
+`0, 2, 4, 6, 8`), or used as-is when `frame_count` is also unset; either way it is recorded as
+`simulation_default`.
 
 | Scenario | Exercises |
 | --- | --- |
@@ -247,8 +253,9 @@ Reports are aggregate-only: they never contain pseudonyms or ordinal identity la
 or text, seeds, run ids, artefact references, file paths, media or embeddings, and the CLI does
 not print the report directory. Adversarial tests plant marker strings in pseudonyms, prompt
 ids, prompt text, seeds and the report path and check that none appear. **Only simulated results
-can be reported:** `render_markdown`/`render_csv` raise `ReportError` for non-simulated results
-until a privacy review defines disclosure rules (e.g. small-cell suppression).
+can be reported:** `render_markdown`/`render_csv` raise `ReportError` unless the summary and
+every adapter (executor, face evaluator, quality evaluator) are marked simulated, until a privacy
+review defines disclosure rules for real data (e.g. small-cell suppression).
 
 ### Example synthetic output
 

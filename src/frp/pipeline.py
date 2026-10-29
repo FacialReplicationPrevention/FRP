@@ -26,7 +26,9 @@ from frp.results import (
     ResultSet,
     ResultValidationError,
     RunResult,
+    frame_index_problems,
     frames_with_status,
+    provenance_problems,
     validation_problems,
     verify_results_against_plan,
 )
@@ -88,18 +90,33 @@ def execute_plan(
     *,
     frame_indices: Sequence[int],
     frame_indices_source: Literal["manifest", "simulation_default"],
+    frame_count: int | None = None,
     simulation_scenario: str | None = None,
     max_runs: int | None = None,
 ) -> ResultSet:
     """Run every planned run in plan order and return validated result records.
 
-    ``max_runs`` stops execution after that many runs (simulating an interrupted experiment);
-    the remaining runs are recorded as ``not_executed`` rather than dropped.
+    Frame indices (bounded by ``frame_count`` when known) and component provenance are
+    checked before any adapter is called. ``max_runs`` stops execution after that many runs
+    (simulating an interrupted experiment); the remaining runs are recorded as
+    ``not_executed`` rather than dropped.
     """
     verify_run_plan(plan)
     if max_runs is not None and max_runs < 0:
         raise ValueError("max_runs must be >= 0")
     indices = tuple(frame_indices)
+    simulated = executor.info.simulated
+    problems = frame_index_problems(indices, frame_count) + provenance_problems(
+        protocol=PROTOCOL_WAN21_I2V_CLIP_VAE_2X2,
+        simulated=simulated,
+        simulation_scenario=simulation_scenario,
+        frame_indices_source=frame_indices_source,
+        executor=executor.info,
+        face_evaluator=face_evaluator.info,
+        quality_evaluator=quality_evaluator.info,
+    )
+    if problems:
+        raise ResultValidationError(problems)
     results = []
     for position, run in enumerate(plan.runs):
         if max_runs is not None and position >= max_runs:
@@ -127,7 +144,6 @@ def execute_plan(
                 quality=quality,
             )
         )
-    components = (executor.info, face_evaluator.info, quality_evaluator.info)
     try:
         result_set = _build_result_set(
             plan,
@@ -135,7 +151,7 @@ def execute_plan(
             face_evaluator,
             quality_evaluator,
             results,
-            simulated=any(component.simulated for component in components),
+            simulated=simulated,
             simulation_scenario=simulation_scenario,
             frame_indices=indices,
             frame_indices_source=frame_indices_source,

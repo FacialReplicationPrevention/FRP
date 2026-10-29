@@ -169,8 +169,26 @@ def test_simulated_flags_must_be_consistent(data):
     data["simulated"] = False
     data["simulation_scenario"] = None
     problems = _problems(data)
-    assert "results from any simulated component must be marked simulated" in problems
+    assert "simulated must equal the simulated flag of every component" in problems
     assert "simulation_default" not in problems
+
+
+COMPONENTS = ("executor", "face_evaluator", "quality_evaluator")
+
+
+def test_simulated_results_require_simulated_components(data):
+    for component in COMPONENTS:
+        data[component]["simulated"] = False
+    assert "simulated must equal the simulated flag of every component" in _problems(data)
+
+
+@pytest.mark.parametrize("real_component", COMPONENTS)
+def test_mixed_component_provenance_rejected(data, real_component):
+    data[real_component]["simulated"] = False
+    assert "simulated and non-simulated components must not be mixed" in _problems(data)
+    data["simulated"] = False
+    data["simulation_scenario"] = None
+    assert "simulated and non-simulated components must not be mixed" in _problems(data)
 
 
 def test_scenario_requires_simulated(data):
@@ -289,3 +307,12 @@ def test_manifest_frame_indices_must_match(small_manifest_data):
     plan = generate_run_plan(parse_manifest(small_manifest_data))
     with pytest.raises(ResultValidationError, match="frame_indices differ from the manifest"):
         verify_results_against_plan(parse_result_set_json(data_json), plan, manifest)
+
+
+def test_frame_indices_must_be_below_manifest_frame_count(small_manifest_data):
+    results = load_results(results_dict(small_manifest_data))  # frame indices 0, 10, 20
+    short = copy.deepcopy(small_manifest_data) | {"frame_indices": None, "frame_count": 9}
+    plan = generate_run_plan(parse_manifest(small_manifest_data))
+    with pytest.raises(ResultValidationError) as excinfo:
+        verify_results_against_plan(results, plan, parse_manifest(short))
+    assert "frame_indices must be < frame_count (9)" in excinfo.value.problems

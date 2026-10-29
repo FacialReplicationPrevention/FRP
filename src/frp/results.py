@@ -236,6 +236,51 @@ class QualityEvaluatorInfo(BaseModel):
         return self
 
 
+def provenance_problems(
+    *,
+    protocol: str,
+    simulated: bool,
+    simulation_scenario: str | None,
+    frame_indices_source: str,
+    executor: ExecutorInfo,
+    face_evaluator: FaceEvaluatorInfo,
+    quality_evaluator: QualityEvaluatorInfo,
+) -> list[str]:
+    """Provenance rules shared by :class:`ResultSet` and the orchestrator's preflight.
+
+    Simulated and real components may never be mixed, and the result-level ``simulated`` flag
+    must equal every component's flag in both directions.
+    """
+    problems = []
+    flags = {executor.simulated, face_evaluator.simulated, quality_evaluator.simulated}
+    if len(flags) > 1:
+        problems.append("simulated and non-simulated components must not be mixed")
+    elif flags != {simulated}:
+        problems.append("simulated must equal the simulated flag of every component")
+    if simulated != (simulation_scenario is not None):
+        problems.append("simulation_scenario is required for, and only for, simulated results")
+    if frame_indices_source == "simulation_default" and not simulated:
+        problems.append("simulation_default frame indices are only allowed for simulated results")
+    expected_family = PROTOCOL_MODEL_FAMILY.get(protocol)
+    if executor.model_family != expected_family:
+        problems.append(f"executor model_family must be {expected_family} for protocol {protocol}")
+    return problems
+
+
+def frame_index_problems(frame_indices: Sequence[int], frame_count: int | None) -> list[str]:
+    """Check requested frame indices: non-empty, non-negative, increasing, below frame_count."""
+    problems = []
+    if not frame_indices:
+        problems.append("frame_indices must not be empty")
+    if any(not isinstance(i, int) or isinstance(i, bool) or i < 0 for i in frame_indices):
+        problems.append("frame_indices must be non-negative integers")
+    elif not _strictly_increasing(frame_indices):
+        problems.append("frame_indices must be strictly increasing with no duplicates")
+    elif frame_count is not None and frame_indices and frame_indices[-1] >= frame_count:
+        problems.append(f"frame_indices must be < frame_count ({frame_count})")
+    return problems
+
+
 class ResultSet(BaseModel):
     """Schema version 1.0: every planned run's outcome for one experiment."""
 
@@ -265,21 +310,15 @@ class ResultSet(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> ResultSet:
-        problems = []
-        components = (self.executor, self.face_evaluator, self.quality_evaluator)
-        if any(component.simulated for component in components) and not self.simulated:
-            problems.append("results from any simulated component must be marked simulated")
-        if self.simulated != (self.simulation_scenario is not None):
-            problems.append("simulation_scenario is required for, and only for, simulated results")
-        if self.frame_indices_source == "simulation_default" and not self.simulated:
-            problems.append(
-                "simulation_default frame indices are only allowed for simulated results"
-            )
-        if self.executor.model_family != PROTOCOL_MODEL_FAMILY[self.protocol]:
-            problems.append(
-                f"executor model_family must be {PROTOCOL_MODEL_FAMILY[self.protocol]} "
-                f"for protocol {self.protocol}"
-            )
+        problems = provenance_problems(
+            protocol=self.protocol,
+            simulated=self.simulated,
+            simulation_scenario=self.simulation_scenario,
+            frame_indices_source=self.frame_indices_source,
+            executor=self.executor,
+            face_evaluator=self.face_evaluator,
+            quality_evaluator=self.quality_evaluator,
+        )
         run_ids = [run.run_id for run in self.runs]
         duplicates = sorted(run_id for run_id, count in Counter(run_ids).items() if count > 1)
         if duplicates:
@@ -364,6 +403,7 @@ def verify_results_against_plan(
             problems.append(f"result record {result.run_id} does not match its planned run")
 
     if manifest is not None:
+        problems.extend(frame_index_problems(results.frame_indices, manifest.frame_count))
         if manifest.frame_indices is not None:
             if results.frame_indices != tuple(manifest.frame_indices):
                 problems.append("frame_indices differ from the manifest")

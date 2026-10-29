@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import csv
 import io
+from dataclasses import replace
 
 import pytest
 
@@ -112,6 +113,17 @@ def test_non_simulated_results_cannot_be_reported(small_manifest_data):
         render_markdown(summary)
     with pytest.raises(ReportError):
         render_csv(summary)
+
+
+@pytest.mark.parametrize("component", ["executor", "face_evaluator", "quality_evaluator"])
+def test_reports_require_every_component_simulated(summary, component):
+    real = getattr(summary, component).model_copy(update={"simulated": False})
+    tampered = replace(summary, **{component: real})
+    assert tampered.simulated is True
+    with pytest.raises(ReportError, match="fully simulated"):
+        render_markdown(tampered)
+    with pytest.raises(ReportError, match="fully simulated"):
+        render_csv(tampered)
 
 
 def test_write_reports_refuses_to_overwrite(summary, tmp_path):

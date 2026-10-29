@@ -46,10 +46,12 @@ class ReportError(Exception):
 
 
 def _require_simulated(summary: ExperimentSummary) -> None:
-    if not summary.simulated:
+    components = (summary.executor, summary.face_evaluator, summary.quality_evaluator)
+    if not (summary.simulated and all(component.simulated for component in components)):
         raise ReportError(
-            "public reports for non-simulated results are not supported until a privacy "
-            "review defines aggregate disclosure rules"
+            "public reports require fully simulated results (every component simulated); "
+            "real-data reports are not supported until a privacy review defines aggregate "
+            "disclosure rules"
         )
 
 

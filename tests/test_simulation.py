@@ -134,6 +134,98 @@ def test_frame_indices_from_manifest_or_simulation_default(manifest_data, exampl
     assert declared.frame_indices_source == "manifest"
 
 
+@pytest.mark.parametrize(
+    ("frame_count", "expected"),
+    [
+        (9, (0, 2, 4, 6, 8)),
+        (5, (0, 1, 2, 3, 4)),
+        (1, (0,)),
+        (81, (0, 20, 40, 60, 80)),
+        (None, (0, 20, 40, 60, 80)),
+    ],
+)
+def test_default_frame_indices_never_exceed_frame_count(manifest_data, frame_count, expected):
+    manifest = parse_manifest(manifest_data | {"frame_count": frame_count})
+    results = simulate_experiment(manifest)
+    assert results.frame_indices == expected
+    assert results.frame_indices_source == "simulation_default"
+    if frame_count is not None:
+        assert all(f.frame_index < frame_count for r in results.runs for f in r.frames)
+
+
+# --- Preflight: bad inputs are rejected before any adapter call ------------------------------
+
+
+class _CountingExecutor:
+    def __init__(self, inner):
+        self._inner = inner
+        self.calls = 0
+
+    @property
+    def info(self):
+        return self._inner.info
+
+    def execute(self, run):
+        self.calls += 1
+        return self._inner.execute(run)
+
+
+class _RealInfo:
+    """Wraps an adapter but declares it non-simulated, to create mixed provenance."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    @property
+    def info(self):
+        return self._inner.info.model_copy(update={"simulated": False})
+
+    def evaluate(self, *args):
+        return self._inner.evaluate(*args)
+
+
+@pytest.mark.parametrize(
+    ("frame_indices", "frame_count", "expected"),
+    [
+        ((0, 20, 40), 9, "frame_indices must be < frame_count (9)"),
+        ((20, 0), None, "strictly increasing"),
+        ((), None, "must not be empty"),
+        ((-1, 0), None, "non-negative integers"),
+    ],
+)
+def test_preflight_rejects_frame_indices_before_execution(
+    example, frame_indices, frame_count, expected
+):
+    executor, face, quality = _adapters()
+    counting = _CountingExecutor(executor)
+    with pytest.raises(ResultValidationError) as excinfo:
+        execute_plan(
+            generate_run_plan(example),
+            counting,
+            face,
+            quality,
+            frame_indices=frame_indices,
+            frame_indices_source="simulation_default",
+            frame_count=frame_count,
+            simulation_scenario="all-valid",
+        )
+    assert any(expected in problem for problem in excinfo.value.problems)
+    assert counting.calls == 0
+
+
+@pytest.mark.parametrize("real", ["face", "quality"])
+def test_preflight_rejects_mixed_provenance_before_execution(example, real):
+    executor, face, quality = _adapters()
+    counting = _CountingExecutor(executor)
+    if real == "face":
+        face = _RealInfo(face)
+    else:
+        quality = _RealInfo(quality)
+    with pytest.raises(ResultValidationError, match="must not be mixed"):
+        _run(example, counting, face, quality)
+    assert counting.calls == 0
+
+
 def test_unknown_scenario_rejected(example):
     with pytest.raises(ResultValidationError, match="unknown simulation scenario"):
         simulate_experiment(example, "no-such-scenario")

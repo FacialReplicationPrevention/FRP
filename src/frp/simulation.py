@@ -36,7 +36,7 @@ from frp.results import (
 from frp.variants import VARIANT_ORDER
 
 # Candidate frame set for 81-frame video from Experiment 002, used only when the manifest
-# leaves frame_indices unset. Recorded in results as "simulation_default".
+# leaves both frame_indices and frame_count unset. Recorded in results as "simulation_default".
 SIMULATION_DEFAULT_FRAME_INDICES: Final = (0, 20, 40, 60, 80)
 SIMULATED_QUALITY_SCALE: Final = (1.0, 5.0)
 SIMULATED_MODEL_FAMILY: Final = "wan2.1-i2v"
@@ -239,6 +239,14 @@ class SimulatedQualityEvaluator:
         return QualityEvaluation(status="scored", score=float(score))
 
 
+def default_frame_indices(frame_count: int | None) -> tuple[int, ...]:
+    """Simulation default: Experiment 002's 0/20/40/60/80 set for 81 frames, scaled
+    proportionally to ``frame_count`` (always 4n+1) when the manifest sets it."""
+    if frame_count is None:
+        return SIMULATION_DEFAULT_FRAME_INDICES
+    return tuple(sorted({k * (frame_count - 1) // 4 for k in range(5)}))
+
+
 def simulate_experiment(
     manifest: ExperimentManifest, scenario_name: str = DEFAULT_SCENARIO
 ) -> ResultSet:
@@ -250,7 +258,8 @@ def simulate_experiment(
     if manifest.frame_indices is not None:
         frame_indices, source = tuple(manifest.frame_indices), "manifest"
     else:
-        frame_indices, source = SIMULATION_DEFAULT_FRAME_INDICES, "simulation_default"
+        frame_indices = default_frame_indices(manifest.frame_count)
+        source = "simulation_default"
     max_runs = None
     if scenario.interrupt_after_fraction is not None:
         max_runs = int(len(plan.runs) * scenario.interrupt_after_fraction)
@@ -262,6 +271,7 @@ def simulate_experiment(
         SimulatedQualityEvaluator(scenario, executor),
         frame_indices=frame_indices,
         frame_indices_source=source,
+        frame_count=manifest.frame_count,
         simulation_scenario=scenario.name,
         max_runs=max_runs,
     )
