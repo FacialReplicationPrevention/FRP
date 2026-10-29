@@ -14,6 +14,7 @@ Read these documents before beginning work:
 - [Research 003](research/003-wan21-i2v-architecture.md) — Wan2.1 architecture notes.
 - [Research 004](research/004-conditioning-ablation-design.md) — ablation design.
 - [Experiment 002](experiments/002-conditioning-ablation-protocol.md) — proposed protocol.
+- [Harness guide](docs/harness.md) — manifest, planner, simulated pipeline and report contracts.
 
 ## Scientific integrity: mandatory
 
@@ -44,6 +45,21 @@ Read these documents before beginning work:
 5. Investigate resilience against model modification **after** a validated model-level effect exists. Don't confuse source-code wrapper hardening with intrinsic model behaviour.
 
 The ablation study is diagnostic: the proposed altered conditioning is **not** a validated privacy defence. Read the full constraints in [Research 004](research/004-conditioning-ablation-design.md).
+
+## Model-specific claims and adapters
+
+FRP is cross-model, but the A/B/C/D CLIP/VAE design, run plan and result protocol (`wan2.1-i2v-clip-vae-2x2`) are **Wan 2.1 I2V specific**. Before making any model-specific claim or introducing a model adapter, check and record:
+
+1. Model family and the specific checkpoint.
+2. A pinned upstream source commit (and checkpoint hashes before execution).
+3. The conditioning assumptions, verified against source at that commit rather than inferred from another version.
+4. Licence and permitted research use.
+
+Do not adapt the Wan 2.1 protocol to another model (e.g. Wan 2.2) without a documented, reviewed protocol of its own.
+
+## Simulated outputs
+
+`frp simulate` produces deterministic **synthetic fixtures**. Never cite simulated numbers as findings, never remove the `SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE` marking, and never present a simulated between-variant difference as evidence of protection.
 
 ## Engineering conventions
 

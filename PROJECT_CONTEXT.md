@@ -1,7 +1,7 @@
 # FRP — Project context and scientific rationale
 
 **Last updated:** 2026-10-29  
-**Project stage:** Early research and experiment design; no Wan GPU experiments reported.
+**Project stage:** Early research, experiment design and a CPU-only harness with a *simulated* pipeline; no model inference or Wan GPU experiments reported.
 
 ## What is FRP?
 
@@ -52,6 +52,19 @@ The implementation exposes two image-conditioning routes:
 
 This is a **source-code-derived architectural observation**; it does not establish the exact location or separability of facial identity. See [Research 003](research/003-wan21-i2v-architecture.md).
 
+## Model scope and multi-model strategy
+
+FRP is a **cross-model** research project, not a Wan 2.1-only project. Experiments are nevertheless **model-specific**.
+
+- **Why open weights:** locally run open-weight models are outside hosted-service filters, so any durable safeguard would need to be a property of the model or its training, which is the long-term question above.
+- **Wan 2.1 I2V** is the original, specifically scoped reference for the CLIP-Vision/VAE first-frame ablation. Research 003–004, Experiment 002, the harness's A/B/C/D run plan and its result protocol id `wan2.1-i2v-clip-vae-2x2` all apply to Wan 2.1 only.
+- **Wan 2.2 I2V** is a candidate for subsequent open-weight evaluation. FRP has **not** verified its conditioning implementation; the Wan 2.1 A/B/C/D design must not be assumed to transfer. A separate protocol may be written only after inspection at a pinned upstream commit.
+- **Other official generations and derivative/community checkpoints** may be inventoried where provenance, licence, reproducibility and permissible research access can be verified. Release, naming and architecture claims are provisional until checked against pinned official sources.
+- **Distinct properties:** facial identity retention, content/safety capabilities and authorisation are separate questions. Derivative fine-tunes with relaxed content restrictions may matter to the threat model, but initial FRP experiments remain neutral, consented and non-explicit.
+- **Model-specific reproducibility:** every model studied needs its own pinned source commit, checkpoint hashes, licence review, verified description of its conditioning paths and a reviewed protocol identifier.
+
+Model selection and verification are tracked in [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4) and Phase 2b of the [roadmap](ROADMAP.md).
+
 ## Current experimental hypothesis
 
 Use a paired **2 × 2 conditioning ablation** with fixed prompts, seeds, model/checkpoint and preprocessing:
@@ -85,7 +98,7 @@ A lower similarity score alone is **not a successful prevention result**; an abs
 - [Experiment 001 — Baseline protocol](experiments/001-baseline-protocol.md): evaluation baseline plan.
 - [Experiment 002 — Conditioning ablation protocol](experiments/002-conditioning-ablation-protocol.md): proposed pilot and data schema.
 
-**Evidence status:** These are literature/source-code studies and proposed protocols. The project has **not** reported empirical model mitigation results. Do not imply that any tested protection, percentage reduction or universal safeguard exists.
+**Evidence status:** These are literature/source-code studies and proposed protocols. The project has **not** reported empirical model mitigation results. Do not imply that any tested protection, percentage reduction or universal safeguard exists. The harness's simulated reports ([docs/harness.md](docs/harness.md)) are software tests on synthetic fixtures, not evidence.
 
 ## Development environment and working model
 

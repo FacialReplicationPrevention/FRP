@@ -9,14 +9,17 @@
 | --- | --- | --- |
 | 0. Initial research | **Documented** | Frame problem and design scientific tests |
 | 1. Portable project context | **Documented** | Give humans and coding agents shared instructions and decisions |
-| 2. CPU experiment harness | **In progress — first increment under review ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))** | Reproducible config, variant planning, unit tests and validation |
+| 2. CPU experiment harness | **In progress — Milestone 001 merged ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1), PR [#2](https://github.com/FacialReplicationPrevention/FRP/pull/2)); Milestone 002 simulated pipeline under review ([#5](https://github.com/FacialReplicationPrevention/FRP/issues/5))** | Reproducible config, variant planning, simulated execution/evaluation/reporting and tests |
+| 2b. Model selection and architecture verification | **Not started** | Pin and source-verify candidate open-weight models before any GPU work |
 | 3. GPU instrumentation and baseline | **Not started** | Verify Wan pathways and generate authorised baseline results |
-| 4. Conditioning-pathway experiment | **Not started** | Test A/B/C/D and jointly measure identity + utility |
+| 4. Conditioning-pathway experiment | **Not started** | Test Wan 2.1 A/B/C/D and jointly measure identity + utility |
 | 5. Intrinsic model mitigation | **Research hypothesis** | Evaluate training-time/model-weight changes |
 | 6. Robustness and hardening | **Future research** | Evaluate resistance to adaptation and deployment bypass |
 | 7. Publication and repeatability | **Ongoing** | Publish clear methods and privacy-safe evidence |
 
-**Important:** "Documented" means research files exist, **not** that experiments were run or a prevention technology was validated.
+**Important:** "Documented" means research files exist, **not** that experiments were run or a prevention technology was validated. A completed harness milestone means software contracts were tested on synthetic fixtures, **not** that anything was measured.
+
+**Model scope:** FRP is a cross-model research project. The existing A/B/C/D CLIP/VAE design (Research 004, Experiment 002) and the harness's run plan and result protocol are specific to **Wan 2.1 I2V**. Other model families, including Wan 2.2, need source verification at a pinned revision and their own reviewed protocol (tracked in [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)).
 
 ## Phase 0 — Research foundation (documented)
 
@@ -39,24 +42,42 @@
 
 **Exit criterion:** A new agent can read repository documentation and accurately describe mission, actual evidence status, current milestone, privacy rules and next task without private chat history.
 
-## Phase 2 — CPU-first experiment harness (NEXT)
+## Phase 2 — CPU-first experiment harness (IN PROGRESS)
 
-### Deliverables
+### Milestone 001 — manifest and dry-run planner (merged: [#1](https://github.com/FacialReplicationPrevention/FRP/issues/1), PR [#2](https://github.com/FacialReplicationPrevention/FRP/pull/2))
 
-- [x] Add a minimal, pinned Python package (`pyproject.toml`, `src/frp/`, `tests/`). ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
-- [x] Configure reproducible Codespaces development (`.devcontainer/`) without large GPU/model dependencies. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
-- [x] Add `pytest` and `ruff`; automate checks via GitHub Actions on synthetic/unit fixtures only. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
-- [x] Add strict, versioned experiment manifest parsing and validation (e.g. Pydantic/YAML), with hashes and explicit unset values. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
-- [x] Implement A/B/C/D variant mapping with invariant checks; in each variant only selected image-conditioning input changes. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1); planning level only — not yet enforced on a real executor)
-- [x] Implement deterministic planning/seed management, input validation and structured run metadata. ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1))
-- [ ] Define adapter interfaces for Wan inference, face detection, identity evaluation and video-quality evaluation **without** making GPU execution a dependency of tests.
-- [ ] Build mock/dry-run execution and tests for detection failures, missing scores, identity-level aggregation, report generation and private-data redaction.
-- [ ] Define an aggregate-only, privacy-reviewed Markdown/CSV report format.
-- [ ] Document local CPU commands and expected test outputs.
+- [x] Add a minimal, pinned Python package (`pyproject.toml`, `src/frp/`, `tests/`).
+- [x] Configure reproducible Codespaces development (`.devcontainer/`) without large GPU/model dependencies.
+- [x] Add `pytest` and `ruff`; automate checks via GitHub Actions on synthetic/unit fixtures only.
+- [x] Add strict, versioned experiment manifest parsing and validation (e.g. Pydantic/YAML), with hashes and explicit unset values.
+- [x] Implement A/B/C/D variant mapping with invariant checks; in each variant only selected image-conditioning input changes. (Planning level only — not yet enforced on a real executor.)
+- [x] Implement deterministic planning/seed management, input validation and structured run metadata.
 
-**Exit criterion:** In a clean CPU Codespace an agent can install the lightweight package, validate a manifest, run A/B/C/D dry-run planning, execute tests and produce a synthetic report, with no network downloads of model weights and no personal data.
+### Milestone 002 — simulated execution, evaluation and reporting ([#5](https://github.com/FacialReplicationPrevention/FRP/issues/5); implementation PR under review)
 
-**First coding-agent task:** Implement only the package skeleton, manifest schema, and deterministic A/B/C/D plan generator with tests. Keep inferencing as an interface/stub. Ask for review before expanding to face recognition, GPU dependencies or real participant material.
+- [x] Define adapter interfaces for run execution, face detection/identity evaluation and video-quality evaluation **without** making GPU execution a dependency of tests. (Contracts only; no real adapter exists.)
+- [x] Define a versioned result schema with explicit missingness and plan linkage (rejects missing, orphaned, duplicate and mismatched records).
+- [x] Build deterministic simulated execution and tests for execution failures, detection failures, missing scores, identity-level aggregation, incomplete pairs, report generation and private-data redaction.
+- [x] Define an aggregate-only Markdown/CSV report format, marked as simulated. (Real-data public reports remain disabled pending privacy review.)
+- [x] Document local CPU commands and example synthetic output in [docs/harness.md](docs/harness.md).
+
+**Exit criterion:** In a clean CPU Codespace an agent can install the lightweight package, validate a manifest, run A/B/C/D dry-run planning, run the simulated pipeline, execute tests and produce a synthetic report, with no network downloads of model weights and no personal data. Checked boxes above become evidence only once the Milestone 002 PR is reviewed and merged.
+
+### Not yet done in Phase 2
+
+- [ ] Identity-clustered uncertainty estimation (extension point only).
+- [ ] Private storage, retention and reload of result records.
+- [ ] Blinding codes for human quality raters.
+- [ ] Privacy-reviewed disclosure rules (e.g. small-cell suppression) for real-data reports.
+
+## Phase 2b — Model selection and architecture verification (NOT STARTED)
+
+Tracked in [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4). No GPU required.
+
+- [ ] Pin an exact Wan 2.1 upstream commit and checkpoint hashes; independently re-verify the CLIP and VAE first-frame conditioning paths at that revision.
+- [ ] Inventory candidate open-weight models (e.g. Wan 2.2 I2V and other official or derivative checkpoints) with verified names, provenance, licences, architectures and resource needs. Treat release and architecture claims as provisional until checked against pinned official sources.
+- [ ] Only if source verification supports it, draft a separate protocol for another model; do not assume the Wan 2.1 A/B/C/D design transfers.
+- [ ] Plan the private, consented baseline measurement and obtain an approved GPU quote.
 
 ## Phase 3 — Controlled GPU smoke test and baseline (NOT STARTED)
 
@@ -110,4 +131,4 @@
 
 ## Next immediate action
 
-Create Phase 2's minimal CPU-only Python scaffold and validate it with `pytest` / `ruff`. **No GPU rental is required for this next task.**
+Review Milestone 002 ([#5](https://github.com/FacialReplicationPrevention/FRP/issues/5)). Then begin Phase 2b: pin and independently verify the Wan 2.1 source revision and checkpoint, and inventory other candidate models ([#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)). **No GPU rental is required for these tasks.**

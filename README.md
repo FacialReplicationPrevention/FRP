@@ -13,7 +13,7 @@ Exploratory, open-source research for generative image and video systems — inc
 </div>
 
 > [!IMPORTANT]
-> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee; the current Python harness performs **planning only**, not model inference or biometric evaluation.
+> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning and a **simulated** pipeline on synthetic fixtures only — no model inference and no biometric evaluation.
 
 ## Why FRP?
 
@@ -31,14 +31,16 @@ Facial similarity **does not establish consent**. No proposed technique is assum
 
 ## Current research focus
 
-FRP's initial experimental target is the official [Wan2.1 image-to-video implementation](https://github.com/Wan-Video/Wan2.1). Our architectural review identifies two image-conditioning routes:
+FRP is a **cross-model** research project: the question of unauthorised identity replication applies to many generative image and video systems. Experiments, however, are **model-specific**, because each architecture conditions on images differently and must be verified against pinned source code before a protocol is written.
+
+FRP's first experimental target is the official [Wan2.1 image-to-video implementation](https://github.com/Wan-Video/Wan2.1). Our architectural review of Wan 2.1 identifies two image-conditioning routes:
 
 - **CLIP Vision**, contributing image features to transformer attention.
 - **Video VAE first-frame conditioning**, supplying the source-frame condition to the denoising latent input.
 
-The proposed **paired 2 × 2 experiment** varies which pathway receives an altered rather than original image condition:
+The proposed **paired 2 × 2 Wan 2.1 experiment** varies which pathway receives an altered rather than original image condition:
 
-| Variant | CLIP pathway | VAE first-frame pathway |
+| Variant | CLIP pathway (Wan 2.1) | VAE first-frame pathway (Wan 2.1) |
 | :---: | :---: | :---: |
 | **A** | Original | Original |
 | **B** | Altered | Original |
@@ -46,6 +48,8 @@ The proposed **paired 2 × 2 experiment** varies which pathway receives an alter
 | **D** | Altered | Altered |
 
 This is a **diagnostic ablation design**, not a validated privacy safeguard. Reduced similarity is not a successful result if faces disappear or generated video quality is severely impaired. See [Research 004](research/004-conditioning-ablation-design.md) and [Experiment 002](experiments/002-conditioning-ablation-protocol.md).
+
+This A/B/C/D design is specific to Wan 2.1 I2V. Other candidates, such as Wan 2.2 I2V, are under consideration but have **not** been source-verified; the Wan 2.1 design is not assumed to transfer to them (see [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)).
 
 ## Research library
 
@@ -67,7 +71,7 @@ This is a **diagnostic ablation design**, not a validated privacy safeguard. Red
 
 ## Getting started
 
-The current implementation is a **CPU-only Python planning harness**. It validates versioned experiment manifests and creates deterministic A/B/C/D run plans. It runs **no inference**, downloads **no model weights**, and processes **no portraits or biometric data**.
+The current implementation is a **CPU-only Python harness**. It validates versioned experiment manifests, creates deterministic Wan 2.1 A/B/C/D run plans, and runs a **simulated** execution → evaluation → aggregation → reporting pipeline on deterministic synthetic fixtures. It runs **no inference**, downloads **no model weights**, and processes **no portraits or biometric data**.
 
 **Prerequisite:** Python 3.11+. GitHub Codespaces installs dependencies using [the devcontainer configuration](.devcontainer/devcontainer.json). For a local setup:
 
@@ -81,11 +85,14 @@ ruff format --check .
 pytest
 
 frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
+frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
 ~~~
 
 The synthetic example intentionally has unset execution fields and reports **NOT READY**. For JSON planning output, append the <code>--format json</code> option. To enforce readiness validation, append <code>--require-ready</code>; this only checks manifest fields, **not** consent, licence validity or scientific correctness.
 
-Read [the harness guide](docs/harness.md) for schema requirements, command behaviour, privacy safeguards, exit codes and limitations.
+`frp simulate` writes an aggregate-only `report.md` and `summary.csv`, both marked **SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE**. Select fixture scenarios (failed runs, absent or multiple faces, evaluator errors, missing quality scores, interrupted experiments) with <code>--scenario</code>. Simulated reports test software contracts and missing-data accounting; they say nothing about any model or safeguard.
+
+Read [the harness guide](docs/harness.md) for schema requirements, adapter interfaces, result and report formats, privacy safeguards, exit codes and limitations.
 
 ## Project progress
 
@@ -93,9 +100,10 @@ Read [the harness guide](docs/harness.md) for schema requirements, command behav
 | --- | --- |
 | Research foundation and protocol drafting | Documented — not experimentally validated |
 | Shared context and contributor guidance | Documented |
-| CPU experiment harness | In progress |
+| CPU experiment harness | In progress — Milestone 001 (manifest + planner) merged; Milestone 002 (simulated pipeline) under review |
+| Model selection and architecture verification | Not started |
 | GPU baseline and calibration | Not started |
-| Conditioning pathway ablation | Not started |
+| Wan 2.1 conditioning pathway ablation | Not started |
 | Intrinsic model-level mitigation | Hypothesis |
 | Robustness and hardening | Future research |
 
@@ -106,7 +114,7 @@ The [roadmap](ROADMAP.md) records milestones, decision gates, and the evidence r
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — mission, hypotheses, boundaries, current evidence and open questions.
 - [ROADMAP.md](ROADMAP.md) — milestones, exit criteria and next engineering tasks.
 - [AGENTS.md](AGENTS.md) — instructions for human and AI contributors.
-- [docs/harness.md](docs/harness.md) — Python harness usage and scientific limitations.
+- [docs/harness.md](docs/harness.md) — Python harness usage, simulated pipeline contracts and scientific limitations.
 
 ## Research and privacy principles
 

@@ -1,9 +1,21 @@
-# FRP CPU-only harness — manifest schema and A/B/C/D dry-run planner
+# FRP CPU-only harness — manifest, A/B/C/D planner and simulated pipeline
 
-**Status:** Phase 2, first coding increment ([issue #1](https://github.com/FacialReplicationPrevention/FRP/issues/1)).
-**Planning / dry-run only.** The harness loads no model, runs no inference, reads no images,
-computes no embeddings and has **measured no scientific outcome**. A valid manifest or run
-plan is not evidence that any conditioning alteration protects identity.
+**Status:** Phase 2. Milestone 001 (manifest schema and dry-run planner,
+[issue #1](https://github.com/FacialReplicationPrevention/FRP/issues/1), merged in
+[PR #2](https://github.com/FacialReplicationPrevention/FRP/pull/2)) and Milestone 002
+(simulated execution, evaluation and reporting,
+[issue #5](https://github.com/FacialReplicationPrevention/FRP/issues/5), under review).
+
+**No real inference or measurement.** The harness loads no model, runs no inference, reads no
+images, computes no embeddings and has **measured no scientific outcome**. A valid manifest,
+run plan or simulated report is not evidence that any conditioning alteration protects
+identity. Simulated reports test software contracts only.
+
+**Model scope.** FRP's research mission covers multiple generative model families, but the
+fixed A/B/C/D mapping, run plan, result protocol id (`wan2.1-i2v-clip-vae-2x2`) and simulated
+executor model family (`wan2.1-i2v`) model the **Wan 2.1 I2V** CLIP/VAE ablation hypothesis
+only. Nothing here implies support for Wan 2.2 or any other model; another model family needs
+its own source-verified, reviewed protocol.
 
 ## What it does
 
@@ -11,13 +23,39 @@ plan is not evidence that any conditioning alteration protects identity.
 2. Generates a deterministic, paired run plan for the 2 × 2 design in
    [Experiment 002](../experiments/002-conditioning-ablation-protocol.md).
 3. Verifies pairing invariants and prints a privacy-safe summary (`frp plan … --dry-run`).
+4. Runs the plan through **simulated** executor and evaluator adapters, validates the result
+   records against the plan, aggregates them identity-first and writes aggregate-only
+   Markdown/CSV reports (`frp simulate …`).
 
 | Module | Responsibility |
 | --- | --- |
 | [`frp.variants`](../src/frp/variants.py) | Fixed A/B/C/D → (CLIP source, VAE first-frame source) mapping |
 | [`frp.manifest`](../src/frp/manifest.py) | Schema, YAML loading, readiness check, content hashes |
 | [`frp.planner`](../src/frp/planner.py) | Run-plan generation and invariant verification |
-| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run` |
+| [`frp.interfaces`](../src/frp/interfaces.py) | Executor, face/identity evaluator and video-quality evaluator contracts |
+| [`frp.results`](../src/frp/results.py) | Result schema `1.0`, null rules, plan linkage checks |
+| [`frp.pipeline`](../src/frp/pipeline.py) | Orchestrator: plan → adapters → validated result records |
+| [`frp.simulation`](../src/frp/simulation.py) | Deterministic synthetic executor/evaluators and scenarios |
+| [`frp.aggregation`](../src/frp/aggregation.py) | Frame → clip → identity → variant summaries and paired contrasts |
+| [`frp.reporting`](../src/frp/reporting.py) | Aggregate-only Markdown and CSV reports (report schema `1.0`) |
+| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR` |
+
+## Reproducible local commands
+
+In a clean CPU Codespace (Python 3.11+; no GPU, network model downloads or personal data):
+
+~~~bash
+python -m pip install -c constraints.txt -e ".[dev]"
+ruff check .
+ruff format --check .
+pytest -q
+frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
+frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
+~~~
+
+`runs/` is git-ignored. `frp simulate` refuses to replace existing report files unless
+`--overwrite` is passed, and its output is byte-for-byte reproducible for the same manifest,
+scenario and `frp` version.
 
 ## Manifest schema 1.0
 
@@ -90,8 +128,187 @@ replaced by fixed descriptions.
   identified by a SHA-256 content hash.
 - Run ids (`<experiment_id>-G0001-A`) contain no pseudonym, prompt text or seed.
 
-Exit codes: `0` success, `1` invalid manifest/plan, `2` usage error (including omitting
-`--dry-run`), `3` not ready (only with `--require-ready`).
+Exit codes: `0` success, `1` invalid manifest/plan (or, for `simulate`, invalid results),
+`2` usage error (including omitting `--dry-run` for `plan`), `3` not ready (only with
+`--require-ready`), `4` report files could not be written (including existing files without
+`--overwrite`).
+
+## Simulated pipeline (Milestone 002)
+
+`frp simulate MANIFEST --report-dir DIR [--scenario NAME] [--overwrite]` runs:
+
+```mermaid
+flowchart LR
+    M[Manifest 1.0] --> P[Verified A/B/C/D run plan]
+    P --> E[RunExecutor]
+    E -->|artefact reference only| F[FaceIdentityEvaluator]
+    E -->|artefact reference only| Q[VideoQualityEvaluator]
+    F --> R[ResultSet 1.0]
+    Q --> R
+    R -->|verified against plan| A[Identity-first aggregation]
+    A --> O[report.md + summary.csv]
+```
+
+In this milestone every adapter is a deterministic **simulation**; no real adapter exists.
+
+### Adapter interfaces (`frp.interfaces`)
+
+Structural `typing.Protocol` contracts with no ML, imaging or GPU imports. Each adapter exposes
+an `info` record (name, revision, simulated flag) that is copied into the results.
+
+| Contract | Input | Output | Notes |
+| --- | --- | --- | --- |
+| `RunExecutor` | `PlannedRun` | `ExecutionRecord` (`succeeded` + artefact reference, or `failed` + failure category) | Wan 2.1 A/B/C/D specific because it consumes the Wan 2.1 plan; `not_executed` is set only by the orchestrator |
+| `FaceIdentityEvaluator` | artefact reference, identity pseudonym, frame indices | one `FrameEvaluation` per frame, in order | Not told the variant. Detection status is separate from similarity |
+| `VideoQualityEvaluator` | artefact reference only | `QualityEvaluation` | Blind to variant and identity; unscorable output is a status, never an invented score |
+
+The orchestrator (`frp.pipeline.execute_plan`) verifies the plan and runs a **preflight**
+before any adapter is called: frame indices must be non-empty, non-negative, strictly
+increasing and below `frame_count` when it is known, and component provenance must satisfy the
+`ResultSet` rules below (no mixing of simulated and real adapters). It then executes runs in
+plan order and assigns exactly one result record per planned run. Adapter exceptions become `failed` runs
+(`executor_error`) or `error` evaluations **without** their messages, which could contain
+paths or private data. Adapter contract violations (wrong frame list, executor claiming
+`not_executed`) raise `ResultValidationError`. `max_runs` simulates an interrupted experiment:
+the remaining runs are recorded as `not_executed`, not dropped.
+
+### Result schema 1.0 (`frp.results`)
+
+Result records are **private structured records**: they hold run ids, group, variant,
+conditioning, seed and *ordinal* identity/prompt indices, plus artefact references — but never
+pseudonyms, prompt text, media or embeddings. Persisting them to private storage is future work;
+`parse_result_set_json` validates a serialised `ResultSet`.
+
+| Level | Rules |
+| --- | --- |
+| `FrameEvaluation` | `face_status` ∈ `valid`, `absent`, `multiple`, `low_quality`, `error`, `not_evaluated`. `similarity` is a finite number in [-1, 1] **only** when `valid`, otherwise `null` (never `0`) |
+| `QualityEvaluation` | `status` ∈ `scored`, `unscorable`, `error`, `not_evaluated`; `score` only when `scored`, and within the evaluator's declared scale |
+| `ExecutionRecord` | `succeeded` requires an artefact reference (URI form, so a bare file path is rejected); `failed` requires a `failure_category` (fixed vocabulary, no free text); `not_executed` has no runtime. `gpu_seconds` is optional |
+| `RunResult` | Conditioning must match the protocol table for its variant; run id must match group and variant; a run that did not succeed must have every frame and quality `not_evaluated` |
+| `ResultSet` | `result_schema_version: "1.0"`, `protocol: wan2.1-i2v-clip-vae-2x2` (executor `model_family` must be `wan2.1-i2v`), plan hashes, declared `frame_indices` and their source, adapter info. Every group has exactly one A, B, C and D record with identical identity, prompt and seed. Duplicate run ids are rejected. Simulated and non-simulated adapters may not be mixed, and `simulated` must equal every adapter's flag in both directions; `simulation_scenario` is required for, and only for, simulated results |
+
+`verify_results_against_plan(results, plan, manifest)` additionally rejects missing, orphaned,
+duplicate or mismatched records and hash mismatches. With a manifest, frame indices must be
+below `frame_count` when it is set and must equal the manifest's `frame_indices` when it sets
+them; for **non-simulated** results the manifest must set them and
+the evaluator revisions must equal `face_evaluator_revision` and `quality_rubric_version`.
+Strictness matches the manifest: unknown keys, type coercion and non-finite numbers are
+rejected, and errors never echo input values or unknown key names.
+
+### Simulation scenarios (`frp.simulation`)
+
+All values are synthetic fixtures. Outcomes follow fixed modular rules over (group index,
+variant position, frame position); valid-face "similarities" are SHA-256-derived numbers in
+[0.1, 0.9] and quality "scores" are integers on a simulated 1–5 rubric. Fixture values do **not**
+depend on the variant's conditioning, so any between-variant difference is an artefact.
+`gpu_seconds` is left `null` rather than inventing a hardware cost. If the manifest leaves
+`frame_indices` unset, the Experiment 002 candidate set `0, 20, 40, 60, 80` (for 81 frames) is
+scaled proportionally to `frame_count` when that is set (e.g. `frame_count: 9` gives
+`0, 2, 4, 6, 8`), or used as-is when `frame_count` is also unset; either way it is recorded as
+`simulation_default`.
+
+| Scenario | Exercises |
+| --- | --- |
+| `mixed` (default) | Failed runs, an interrupted tail (`not_executed`), every face status and every quality status |
+| `all-valid` | Every run succeeds and every value is present |
+| `absent-face` | Frames with no detectable face |
+| `multiple-faces` | Ambiguous frames with more than one face |
+| `evaluator-error` | Face and quality evaluator errors |
+| `missing-quality` | Unavailable (`not_evaluated`) and `unscorable` quality |
+| `failed-run` | Runs that fail to execute |
+| `incomplete` | Experiment interrupted after 75% of planned runs |
+
+### Aggregation (`frp.aggregation`)
+
+Frames within a clip and clips within an identity are **not** independent observations.
+
+1. **Clip:** face-status counts; later-frame similarity = median over `valid` frames with
+   index ≠ 0, available only if at least `min_valid_later_frames` (default 1) exist;
+   first-frame (index 0) similarity reported separately.
+2. **Identity × variant:** median of available clip values.
+3. **Variant:** median across identities, with the number of contributing identities.
+   Detection coverage, execution and quality status counts are reported as descriptive totals
+   with explicit denominators.
+4. **Paired contrasts** B − A, C − A, D − A (later-frame similarity and quality): differences
+   are formed only within a trial group where both values exist, summarised per identity
+   (median), then as a median across identities. Incomplete groups are counted by cause
+   (baseline missing, variant missing, both); nothing is imputed. A contrast with no complete
+   identity is reported as insufficient.
+
+No calibration, thresholds, confidence intervals or tests are computed. `UncertaintyEstimator`
+is the extension point for a future identity-clustered method: it receives one unlabelled value
+per identity and returns an interval or `None`.
+
+### Reports (report schema 1.0, `frp.reporting`)
+
+- `report.md` — banner, provenance (hashes, schema versions, adapter revisions, frame indices),
+  execution outcomes, detection coverage, similarity, quality, paired contrasts and
+  interpretation constraints.
+- `summary.csv` — long format with columns `data_provenance, report_schema_version,
+  experiment_id, section, subject, metric, value, value_status`. Every row's
+  `data_provenance` is `SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE`. Missing values
+  are an empty `value` with `value_status` `not_available` (or `not_computed` for intervals).
+
+Reports are aggregate-only: they never contain pseudonyms or ordinal identity labels, prompt ids
+or text, seeds, run ids, artefact references, file paths, media or embeddings, and the CLI does
+not print the report directory. Adversarial tests plant marker strings in pseudonyms, prompt
+ids, prompt text, seeds and the report path and check that none appear. **Only simulated results
+can be reported:** `render_markdown`/`render_csv` raise `ReportError` unless the summary and
+every adapter (executor, face evaluator, quality evaluator) are marked simulated, until a privacy
+review defines disclosure rules for real data (e.g. small-cell suppression).
+
+### Example synthetic output
+
+> SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE. The numbers below come from fixture
+> rules and describe no model, person or safeguard.
+
+~~~text
+$ frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
+SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE
+Synthetic fixtures only: no model, image, video, face or embedding was used.
+
+Experiment:  FRP-EXP-002-SYNTHETIC-EXAMPLE (scenario mixed)
+Planned runs: 24  Simulated successes: 17  Trial groups: 6
+Wrote report.md and summary.csv to the report directory.
+~~~
+
+Excerpt of the generated `report.md`:
+
+~~~markdown
+## Run execution outcomes
+
+| Variant | CLIP | VAE first frame | Planned | Succeeded | Failed | Not executed |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | original | original | 6 | 5 | 1 | 0 |
+| B | altered | original | 6 | 4 | 1 | 1 |
+| C | original | altered | 6 | 4 | 1 | 1 |
+| D | altered | altered | 6 | 4 | 1 | 1 |
+
+## Paired comparisons (identity level, no imputation)
+
+| Contrast | Metric | Median identity difference | Identities with pair | Complete groups | Missing A only | Missing variant only | Missing both | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| B - A | Later-frame similarity | +0.065 | 2 / 3 | 3 / 6 | 1 | 2 | 0 | incomplete pairs excluded (not imputed) |
+~~~
+
+### Milestone 002 decisions for review
+
+These are implementation choices, not protocol changes.
+
+1. **Later frames** are all declared frame indices except `0`; Experiment 002's candidate
+   primary set (`20, 40, 60, 80`) follows from this when frame indices are `0, 20, 40, 60, 80`.
+2. **`min_valid_later_frames` defaults to 1.** Experiment 002 does not specify a minimum; the
+   value should be fixed in the analysis plan before real data.
+3. **Primary contrasts are B − A, C − A, D − A** as listed in Experiment 002. The B/C/D
+   interaction is not summarised.
+4. **Medians at each level** (clip, identity, variant) as a robust descriptive summary; the
+   analysis plan may choose otherwise.
+5. **Detection coverage totals pool frames** as descriptive counts with explicit denominators,
+   alongside identity-level availability; they are not treated as independent observations.
+6. **The face evaluator receives the identity pseudonym** (to locate a private reference
+   image) but not the variant; the quality evaluator receives only an artefact reference.
+   Blinding codes for human raters are still to be designed.
+7. **Real-data public reports are disabled** until a privacy review defines disclosure rules.
 
 ## Departures from Experiment 002 and decisions for review
 
@@ -120,12 +337,22 @@ These are implementation choices, not protocol changes. Each needs scientific re
 
 ## Known limitations
 
-- No inference, image transform, face detection, identity evaluation, video-quality scoring
-  or reporting is implemented; adapter interfaces for these are future work.
+- No real inference, image transform, face detection, identity evaluation or video-quality
+  scoring is implemented. Only simulated adapters exist; their outputs are fixtures.
+- Simulated reports validate software contracts and denominators, not scientific outcomes.
+  Fixture similarity/quality values do not resemble real recogniser or rubric distributions.
+- No calibration, match thresholds, uncertainty intervals, interaction analysis or
+  inferential statistics are implemented.
+- Result records are validated in memory and via `parse_result_set_json`; there is no private
+  storage integration, retention policy or CLI for persisting/reloading records.
 - Equality of generation controls is guaranteed by construction from a single manifest; the
   harness cannot yet verify that a future executor actually applies them.
+- With few identities, aggregate medians can approximate individual values. Real-data public
+  reporting is therefore disabled pending a privacy review.
 - The pseudonym pattern is a format guard, not proof that a value is non-identifying.
 - `--require-ready` checks presence and format, not correctness of hashes, licences or consent.
+- The executor contract and result protocol are Wan 2.1 A/B/C/D specific; other model
+  families need their own reviewed protocol.
 - Dependency lower bounds in `pyproject.toml` are untested; only `constraints.txt` pins are
   tested in CI.
 
