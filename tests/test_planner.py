@@ -109,6 +109,7 @@ def _tamper_run(plan: RunPlan, group_pos: int, run_pos: int, **changes) -> RunPl
     [
         ({"seed": 999}, "seed does not match its group"),
         ({"prompt_id": "P02"}, "prompt does not match its group"),
+        ({"prompt_index": 2}, "prompt does not match its group"),
         ({"identity_pseudonym": "SYN-002"}, "identity does not match its group"),
         ({"generation_controls_sha256": "f" * 64}, "generation controls differ"),
         ({"clip_conditioning": ORIGINAL}, "conditioning does not match variant B"),
@@ -155,3 +156,47 @@ def test_verify_detects_plan_from_different_manifest(manifest_data):
     manifest_data["sampler"] = "different-sampler"
     with pytest.raises(PlanInvariantError, match="generation controls hash does not match"):
         verify_run_plan(plan, parse_manifest(manifest_data))
+
+
+@pytest.mark.parametrize(
+    "bad_run_id",
+    ["FRP-TEST-001-G0001-X", "FRP-TEST-001-G0099-B", "OTHER-EXP-G0001-B", "run-0002"],
+)
+def test_verify_detects_unique_but_incorrect_run_id(manifest_data, bad_run_id):
+    plan = generate_run_plan(parse_manifest(manifest_data))
+    tampered = _tamper_run(plan, 0, 1, run_id=bad_run_id)
+    assert len({run.run_id for run in tampered.runs}) == len(tampered.runs)
+    with pytest.raises(PlanInvariantError) as info:
+        verify_run_plan(tampered)
+    assert info.value.problems == (
+        f"group 1 run {bad_run_id}: run id does not match the expected FRP-TEST-001-G0001-B",
+    )
+
+
+def test_verify_detects_run_ids_swapped_within_group(manifest_data):
+    plan = generate_run_plan(parse_manifest(manifest_data))
+    a, b = plan.groups[0].runs[:2]
+    tampered = _tamper_run(_tamper_run(plan, 0, 0, run_id=b.run_id), 0, 1, run_id=a.run_id)
+    with pytest.raises(PlanInvariantError) as info:
+        verify_run_plan(tampered)
+    problems = "\n".join(info.value.problems)
+    assert "run id does not match the expected FRP-TEST-001-G0001-A" in problems
+    assert "run id does not match the expected FRP-TEST-001-G0001-B" in problems
+    assert "not unique" not in problems
+
+
+def test_verify_detects_run_ids_from_another_experiment(manifest_data):
+    plan = generate_run_plan(parse_manifest(manifest_data))
+    renamed = dataclasses.replace(plan, experiment_id="FRP-TEST-002")
+    with pytest.raises(PlanInvariantError) as info:
+        verify_run_plan(renamed, parse_manifest(manifest_data))
+    problems = "\n".join(info.value.problems)
+    assert "plan experiment_id does not match the manifest" in problems
+    assert "run id does not match the expected FRP-TEST-002-G0001-A" in problems
+
+
+def test_prompt_and_identity_indices_follow_manifest_order(manifest_data):
+    plan = generate_run_plan(parse_manifest(manifest_data))
+    indices = [(g.identity_index, g.prompt_index, g.seed) for g in plan.groups]
+    assert indices[:4] == [(1, 1, 7), (1, 1, 11), (1, 1, 13), (1, 2, 7)]
+    assert indices[-1] == (2, 2, 13)

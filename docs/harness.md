@@ -43,6 +43,9 @@ they may be `null`, which is the *only* accepted "explicitly unset" marker. Plac
 such as `TODO`, `TBD`, `<fill me>`, `{{ x }}`, `???` or `N/A` is rejected so that unset values
 cannot be mistaken for real ones. `frp plan … --dry-run` lists every unset field;
 `--require-ready` exits with code 3 until all are set and `model_license_reviewed` is `true`.
+Readiness is a **presence and format check only**: it does not verify consent, licence
+validity, that hashes match real files, or that the selected values are scientifically
+appropriate.
 
 Format checks applied when a value is set: `upstream_commit_sha` is a 40-hex Git SHA;
 `checkpoint_hashes` maps file names to 64-hex SHA-256 digests; `frame_count` has the form
@@ -69,15 +72,20 @@ replaced by fixed descriptions.
 - Every run in a group carries the same identity, prompt id, seed and
   `generation_controls_sha256` (a hash of model revision, checkpoint, alteration and sampling
   settings). Only `clip_conditioning` and `vae_first_frame_conditioning` vary.
-- `generate_run_plan` always calls `verify_run_plan`, which re-checks these invariants plus
-  unique run ids, unique tuples, consecutive numbering and exact coverage of the manifest
-  product. Tests tamper with plans to confirm each violation is detected.
+- `generate_run_plan` always calls `verify_run_plan`, which re-checks these invariants plus:
+  every run id equals `make_run_id(experiment_id, group_index, variant)` (so a unique but
+  wrong or swapped id is rejected), unique run ids, unique tuples, consecutive numbering and,
+  when the manifest is supplied, matching experiment id and exact, index-consistent coverage
+  of the manifest product. Tests tamper with plans to confirm each violation is detected.
 
 ## Privacy of CLI output
 
 - Identity pseudonyms are replaced by ordinal labels (`identity-01`) unless
   `--show-pseudonyms` is passed; keep such output private, as Experiment 002 treats
   pseudonyms as non-public.
+- Prompt ids are user-controlled and could accidentally contain personal information, so
+  they are replaced by ordinal labels (`prompt-01`, in manifest order) unless
+  `--show-prompt-ids` is passed for private debugging.
 - Prompt text, file paths, image references and embeddings are never printed. The manifest is
   identified by a SHA-256 content hash.
 - Run ids (`<experiment_id>-G0001-A`) contain no pseudonym, prompt text or seed.

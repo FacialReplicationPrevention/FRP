@@ -31,10 +31,22 @@ def _identity_label(run: PlannedRun, show_pseudonyms: bool) -> str:
     return run.identity_pseudonym if show_pseudonyms else f"identity-{run.identity_index:02d}"
 
 
+def _prompt_label(run: PlannedRun, show_prompt_ids: bool) -> str:
+    return run.prompt_id if show_prompt_ids else f"prompt-{run.prompt_index:02d}"
+
+
 def build_dry_run_report(
-    manifest: ExperimentManifest, plan: RunPlan, *, show_pseudonyms: bool = False
+    manifest: ExperimentManifest,
+    plan: RunPlan,
+    *,
+    show_pseudonyms: bool = False,
+    show_prompt_ids: bool = False,
 ) -> dict[str, Any]:
-    """Privacy-safe dry-run summary. Never includes prompt text, image paths or embeddings."""
+    """Privacy-safe dry-run summary. Never includes prompt text, image paths or embeddings.
+
+    User-controlled identifiers (identity pseudonyms, prompt ids) are replaced by ordinal labels
+    unless explicitly revealed for private debugging.
+    """
     unset = unset_execution_fields(manifest)
     return {
         "notice": NOTICE,
@@ -55,12 +67,13 @@ def build_dry_run_report(
         },
         "readiness": {"ready_for_execution": not unset, "unset_execution_fields": unset},
         "pseudonyms_redacted": not show_pseudonyms,
+        "prompt_ids_redacted": not show_prompt_ids,
         "runs": [
             {
                 "run_id": run.run_id,
                 "group": run.group_index,
                 "identity": _identity_label(run, show_pseudonyms),
-                "prompt_id": run.prompt_id,
+                "prompt": _prompt_label(run, show_prompt_ids),
                 "seed": run.seed,
                 "variant": run.variant.value,
                 "clip_conditioning": run.clip_conditioning.value,
@@ -91,6 +104,10 @@ def _render_text(report: dict[str, Any], out: TextIO) -> None:
         lines.append(
             "Execution readiness: all execution fields are set (execution is still not implemented)"
         )
+        lines.append(
+            "  Note: this checks presence and format only, not consent, licence validity or "
+            "hash correctness."
+        )
     else:
         unset = readiness["unset_execution_fields"]
         lines.append(f"Execution readiness: NOT READY - {len(unset)} field(s) explicitly unset:")
@@ -99,14 +116,16 @@ def _render_text(report: dict[str, Any], out: TextIO) -> None:
         lines.append(
             "Identity pseudonyms are redacted to ordinal labels (--show-pseudonyms to reveal)."
         )
+    if report["prompt_ids_redacted"]:
+        lines.append("Prompt ids are redacted to ordinal labels (--show-prompt-ids to reveal).")
     lines.append("")
-    header = ("run_id", "group", "identity", "prompt_id", "seed", "variant", "clip", "vae_ff")
+    header = ("run_id", "group", "identity", "prompt", "seed", "variant", "clip", "vae_ff")
     rows = [
         (
             r["run_id"],
             str(r["group"]),
             r["identity"],
-            r["prompt_id"],
+            r["prompt"],
             str(r["seed"]),
             r["variant"],
             r["clip_conditioning"],
@@ -145,9 +164,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print identity pseudonyms instead of ordinal labels (keep such output private)",
     )
     plan.add_argument(
+        "--show-prompt-ids",
+        action="store_true",
+        help="print manifest prompt ids instead of ordinal labels (keep such output private)",
+    )
+    plan.add_argument(
         "--require-ready",
         action="store_true",
-        help=f"exit {EXIT_NOT_READY} if any execution field is still explicitly unset",
+        help=(
+            f"exit {EXIT_NOT_READY} if any execution field is still explicitly unset; checks "
+            "presence and format only, not consent, licence validity or hash correctness"
+        ),
     )
     return parser
 
@@ -180,7 +207,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"  - {problem}", file=sys.stderr)
         return EXIT_INVALID
 
-    report = build_dry_run_report(manifest, plan, show_pseudonyms=args.show_pseudonyms)
+    report = build_dry_run_report(
+        manifest,
+        plan,
+        show_pseudonyms=args.show_pseudonyms,
+        show_prompt_ids=args.show_prompt_ids,
+    )
     if args.format == "json":
         json.dump(report, sys.stdout, indent=2)
         sys.stdout.write("\n")

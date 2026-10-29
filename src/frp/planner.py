@@ -29,6 +29,7 @@ class PlannedRun:
     group_index: int
     identity_index: int
     identity_pseudonym: str
+    prompt_index: int
     prompt_id: str
     seed: int
     variant: Variant
@@ -42,6 +43,7 @@ class TrialGroup:
     group_index: int
     identity_index: int
     identity_pseudonym: str
+    prompt_index: int
     prompt_id: str
     seed: int
     runs: tuple[PlannedRun, ...]
@@ -73,14 +75,19 @@ def generate_run_plan(manifest: ExperimentManifest) -> RunPlan:
     """
     controls = generation_controls_sha256(manifest)
     groups = []
-    tuples = itertools.product(enumerate(manifest.identities, 1), manifest.prompts, manifest.seeds)
-    for group_index, ((identity_index, identity), prompt, seed) in enumerate(tuples, 1):
+    tuples = itertools.product(
+        enumerate(manifest.identities, 1), enumerate(manifest.prompts, 1), manifest.seeds
+    )
+    for group_index, ((identity_index, identity), (prompt_index, prompt), seed) in enumerate(
+        tuples, 1
+    ):
         runs = tuple(
             PlannedRun(
                 run_id=make_run_id(manifest.experiment_id, group_index, variant),
                 group_index=group_index,
                 identity_index=identity_index,
                 identity_pseudonym=identity.pseudonym,
+                prompt_index=prompt_index,
                 prompt_id=prompt.id,
                 seed=seed,
                 variant=variant,
@@ -95,6 +102,7 @@ def generate_run_plan(manifest: ExperimentManifest) -> RunPlan:
                 group_index=group_index,
                 identity_index=identity_index,
                 identity_pseudonym=identity.pseudonym,
+                prompt_index=prompt_index,
                 prompt_id=prompt.id,
                 seed=seed,
                 runs=runs,
@@ -111,7 +119,7 @@ def generate_run_plan(manifest: ExperimentManifest) -> RunPlan:
     return plan
 
 
-def _check_group(group: TrialGroup, expected_controls: str) -> list[str]:
+def _check_group(group: TrialGroup, experiment_id: str, expected_controls: str) -> list[str]:
     where = f"group {group.group_index}"
     problems = []
     variants = tuple(run.variant for run in group.runs)
@@ -122,12 +130,17 @@ def _check_group(group: TrialGroup, expected_controls: str) -> list[str]:
         label = f"{where} run {run.run_id}"
         if run.group_index != group.group_index:
             problems.append(f"{label}: group_index mismatch")
+        if run.run_id != make_run_id(experiment_id, group.group_index, run.variant):
+            problems.append(
+                f"{label}: run id does not match the expected "
+                f"{make_run_id(experiment_id, group.group_index, run.variant)}"
+            )
         if (run.identity_index, run.identity_pseudonym) != (
             group.identity_index,
             group.identity_pseudonym,
         ):
             problems.append(f"{label}: identity does not match its group")
-        if run.prompt_id != group.prompt_id:
+        if (run.prompt_index, run.prompt_id) != (group.prompt_index, group.prompt_id):
             problems.append(f"{label}: prompt does not match its group")
         if run.seed != group.seed:
             problems.append(f"{label}: seed does not match its group")
@@ -144,33 +157,39 @@ def verify_run_plan(plan: RunPlan, manifest: ExperimentManifest | None = None) -
     """Raise :class:`PlanInvariantError` if any A/B/C/D pairing invariant is violated.
 
     Checks: four runs per group in order A-D; identical identity, prompt, seed and generation
-    controls within each group; protocol-defined conditioning per variant; unique run ids and
-    unique (identity, prompt, seed) tuples; consecutive group numbering. If ``manifest`` is
-    given, also checks that the plan covers exactly the manifest's identity x prompt x seed
-    product with matching hashes.
+    controls within each group; protocol-defined conditioning per variant; every run id equals
+    :func:`make_run_id` for its experiment, group and variant; unique run ids and unique
+    (identity, prompt, seed) tuples; consecutive group numbering. If ``manifest`` is given,
+    also checks the experiment id, that the plan covers exactly the manifest's
+    identity x prompt x seed product (including ordinal indices), and matching hashes.
     """
     problems: list[str] = []
     for position, group in enumerate(plan.groups, 1):
         if group.group_index != position:
             problems.append(f"group at position {position} has group_index {group.group_index}")
-        problems.extend(_check_group(group, plan.generation_controls_sha256))
+        problems.extend(_check_group(group, plan.experiment_id, plan.generation_controls_sha256))
 
     run_ids = [run.run_id for run in plan.runs]
     if len(set(run_ids)) != len(run_ids):
         problems.append("run ids are not unique")
     keys = [(g.identity_pseudonym, g.prompt_id, g.seed) for g in plan.groups]
+    indexed_keys = [
+        (g.identity_index, g.identity_pseudonym, g.prompt_index, g.prompt_id, g.seed)
+        for g in plan.groups
+    ]
     if len(set(keys)) != len(keys):
         problems.append("the same identity/prompt/seed tuple appears in more than one group")
 
     if manifest is not None:
-        expected_keys = list(
-            itertools.product(
-                [identity.pseudonym for identity in manifest.identities],
-                [prompt.id for prompt in manifest.prompts],
-                manifest.seeds,
+        if plan.experiment_id != manifest.experiment_id:
+            problems.append("plan experiment_id does not match the manifest")
+        expected_keys = [
+            (identity_index, identity.pseudonym, prompt_index, prompt.id, seed)
+            for (identity_index, identity), (prompt_index, prompt), seed in itertools.product(
+                enumerate(manifest.identities, 1), enumerate(manifest.prompts, 1), manifest.seeds
             )
-        )
-        if keys != expected_keys:
+        ]
+        if indexed_keys != expected_keys:
             problems.append("groups do not match the manifest identity x prompt x seed product")
         if plan.generation_controls_sha256 != generation_controls_sha256(manifest):
             problems.append("plan generation controls hash does not match the manifest")
