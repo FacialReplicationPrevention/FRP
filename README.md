@@ -13,7 +13,7 @@ Exploratory, open-source research for generative image and video systems — inc
 </div>
 
 > [!IMPORTANT]
-> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning, a **simulated** pipeline on synthetic fixtures and an offline model-provenance check — no model inference and no biometric evaluation.
+> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning, a **simulated** pipeline on synthetic fixtures, an offline model-provenance check and an offline check of a GPU-readiness *template* — no model inference and no biometric evaluation. No GPU job, weight download or evaluation of real people has been run.
 
 ## Why FRP?
 
@@ -67,6 +67,9 @@ This A/B/C/D design is specific to Wan 2.1 I2V. A static review of **Wan 2.2 I2V
 | --- | --- |
 | [Experiment 001 — Baseline identity preservation](experiments/001-baseline-protocol.md) | Establish reproducible measurement before intervention |
 | [Experiment 002 — Conditioning pathway ablation](experiments/002-conditioning-ablation-protocol.md) | Test paired A/B/C/D alterations while measuring identity **and** utility |
+| [Experiment 003 — Wan 2.1 I2V single-condition baseline (design only)](experiments/003-wan21-i2v-baseline-design.md) | Unaltered baseline contract: smoke, calibration and baseline roles; separate from A/B/C/D |
+
+Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is the current milestone. Its first PR is **preparation only**: a [GPU readiness protocol](docs/gpu-readiness.md) with seven separate human approvals, the baseline design above, and a [private visual-review specification](docs/private-review-viewer.md). None of the gates has been approved, and no GPU, inference or evaluation has run.
 
 **No empirical model-mitigation results have been published by FRP.** Research documents and experiment protocols are not evidence that protection works.
 
@@ -88,6 +91,7 @@ pytest
 frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
 frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
 frp provenance provenance/model-candidates.yaml
+frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
 ~~~
 
 The synthetic example intentionally has unset execution fields and reports **NOT READY**. For JSON planning output, append the <code>--format json</code> option. To enforce readiness validation, append <code>--require-ready</code>; this only checks manifest fields, **not** consent, licence validity or scientific correctness.
@@ -95,6 +99,8 @@ The synthetic example intentionally has unset execution fields and reports **NOT
 `frp simulate` writes an aggregate-only `report.md` and `summary.csv`, both marked **SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE**. Select fixture scenarios (failed runs, absent or multiple faces, evaluator errors, missing quality scores, interrupted experiments) with <code>--scenario</code>. Simulated reports test software contracts and missing-data accounting; they say nothing about any model or safeguard.
 
 `frp provenance` checks the model-candidate inventory for internal consistency (pinned evidence for `verified` claims, no invented weight digests, no Wan 2.1 protocol on other architectures). It fetches nothing and does not re-verify upstream sources; every candidate is reported **NOT READY** for execution.
+
+`frp readiness` checks that the public GPU-readiness template is internally consistent and that its pins match the provenance inventory. Schema 1.0 can only express **pending** gates and no quote, so a passing check is **never** an approval to download weights, rent a GPU or process anyone's data.
 
 Read [the harness guide](docs/harness.md) for schema requirements, adapter interfaces, result and report formats, privacy safeguards, exit codes and limitations.
 
@@ -105,8 +111,8 @@ Read [the harness guide](docs/harness.md) for schema requirements, adapter inter
 | Research foundation and protocol drafting | Documented — not experimentally validated |
 | Shared context and contributor guidance | Documented |
 | CPU experiment harness | Milestone 001 (manifest + planner) and Milestone 002 (simulated pipeline) merged |
-| Model selection and architecture verification | In progress — Milestone 003 (pinned source review, provenance inventory) under review |
-| GPU baseline and calibration | Not started |
+| Model selection and architecture verification | Milestone 003 merged (pinned source review, provenance inventory); weight hashes, licence-use review and GPU quote still pending |
+| GPU baseline and calibration | **Milestone 004 in progress** — PR 1 (CPU-only readiness protocol, baseline design, private-review specification) under review; no gate approved, no GPU, download, inference or evaluation run |
 | Wan 2.1 conditioning pathway ablation | Not started |
 | Intrinsic model-level mitigation | Hypothesis |
 | Robustness and hardening | Future research |
@@ -118,7 +124,9 @@ The [roadmap](ROADMAP.md) records milestones, decision gates, and the evidence r
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — mission, hypotheses, boundaries, current evidence and open questions.
 - [ROADMAP.md](ROADMAP.md) — milestones, exit criteria and next engineering tasks.
 - [AGENTS.md](AGENTS.md) — instructions for human and AI contributors.
-- [docs/harness.md](docs/harness.md) — Python harness usage, simulated pipeline and provenance contracts, and scientific limitations.
+- [docs/harness.md](docs/harness.md) — Python harness usage, simulated pipeline, provenance and readiness contracts, and scientific limitations.
+- [docs/gpu-readiness.md](docs/gpu-readiness.md) — go/no-go gates, cost-quote template, weight acquisition and data-handling procedure (design; nothing approved).
+- [docs/private-review-viewer.md](docs/private-review-viewer.md) — specification of the local-only side-by-side visual review (design; not built).
 
 ## Research and privacy principles
 
