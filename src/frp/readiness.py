@@ -231,7 +231,7 @@ class ReadinessRecord(BaseModel):
 
     readiness_schema_version: Literal["1.0"]
     record_id: RecordId
-    reviewed_on: Annotated[date, Field(strict=False)]
+    template_updated_on: Annotated[date, Field(strict=False)]  # not evidence of any gate review
     protocol: Literal["wan2.1-i2v-baseline"]
     target: Target
     gates: list[Gate]

@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 import yaml
 
-from frp.cli import EXIT_INVALID, EXIT_OK, build_readiness_report, main
+from frp.cli import EXIT_INVALID, EXIT_OK, EXIT_USAGE, build_readiness_report, main
 from frp.provenance import load_provenance
 from frp.readiness import (
     BASELINE_PROTOCOL_ID,
@@ -262,10 +262,37 @@ def test_cli_text_and_json(capsys: pytest.CaptureFixture[str]) -> None:
     text = capsys.readouterr().out
     assert "NOT AN AUTHORISATION" in text
     assert "Authorised to execute: NO" in text
+    assert "offline consistency check only" in text
     assert text.count(": pending") == len(GATE_IDS)
-    assert main(["readiness", str(TEMPLATE), "--format", "json"]) == EXIT_OK
+    args = ["readiness", str(TEMPLATE), "--provenance", str(INVENTORY), "--format", "json"]
+    assert main(args) == EXIT_OK
     report = json.loads(capsys.readouterr().out)
     assert report["authorised_to_execute"] is False
+    assert report["pins_match_provenance_inventory"] is True
+
+
+def test_cli_requires_provenance_and_fails_closed_without_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["readiness", str(TEMPLATE)]) == EXIT_USAGE
+    captured = capsys.readouterr()
+    assert "--provenance" in captured.err
+    assert "NOT AN AUTHORISATION" not in captured.out
+
+
+@pytest.mark.parametrize("field", ["source_commit", "checkpoint_revision"])
+def test_cli_does_not_report_valid_for_a_well_formed_but_unpinned_revision(
+    field: str, tmp_path: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _data()
+    data["target"][field] = "c" * 40  # valid 40-hex shape, not the reviewed pin
+    parse_readiness(data)  # shape alone is accepted by the schema
+    path = tmp_path / "record.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    assert main(["readiness", str(path), "--provenance", str(INVENTORY)]) == EXIT_INVALID
+    captured = capsys.readouterr()
+    assert field in captured.err
+    assert "Authorised to execute" not in captured.out
 
 
 def test_cli_rejects_invalid_record_without_echoing_values(
@@ -275,7 +302,7 @@ def test_cli_rejects_invalid_record_without_echoing_values(
     data["cost_quote"]["provider_name"] = "marker-provider-xyz"
     path = tmp_path / "record.yaml"
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
-    assert main(["readiness", str(path)]) == EXIT_INVALID
+    assert main(["readiness", str(path), "--provenance", str(INVENTORY)]) == EXIT_INVALID
     captured = capsys.readouterr()
     assert "marker-provider-xyz" not in captured.err + captured.out
 

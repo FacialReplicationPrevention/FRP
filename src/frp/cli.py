@@ -232,7 +232,11 @@ def _build_parser() -> argparse.ArgumentParser:
     readiness.add_argument(
         "--provenance",
         metavar="INVENTORY",
-        help="also check that the record's pins agree with this provenance inventory",
+        required=True,
+        help=(
+            "provenance inventory the record's pins must agree with (required: a record is never "
+            "reported valid without this offline consistency check)"
+        ),
     )
     readiness.add_argument("--format", choices=("text", "json"), default="text")
     return parser
@@ -382,6 +386,7 @@ def build_readiness_report(record: ReadinessRecord) -> dict[str, Any]:
         "record_id": record.record_id,
         "protocol": record.protocol,
         "authorised_to_execute": False,
+        "pins_match_provenance_inventory": True,
         "gates": {g.gate_id: g.status for g in record.gates},
         "cost_quote_status": record.cost_quote.status,
         "hardware_requirements": {r.requirement_id: r.status for r in record.hardware_requirements},
@@ -396,6 +401,8 @@ def _render_readiness_text(report: dict[str, Any]) -> str:
         f"Record:   {report['record_id']} (readiness schema {report['readiness_schema_version']}, "
         f"protocol {report['protocol']}, design only)",
         "Authorised to execute: NO",
+        "Pins agree with the provenance inventory (offline consistency check only; upstream "
+        "sources and weights were not verified).",
         "",
         "Gates (each a separate human approval):",
         *(f"  {gate}: {status}" for gate, status in report["gates"].items()),
@@ -411,11 +418,10 @@ def _render_readiness_text(report: dict[str, Any]) -> str:
 def _readiness(args: argparse.Namespace) -> int:
     try:
         record = load_readiness(args.record)
-        if args.provenance:
-            problems = check_against_provenance(record, load_provenance(args.provenance))
-            if problems:
-                _print_problems("frp: readiness record disagrees with provenance:", problems)
-                return EXIT_INVALID
+        problems = check_against_provenance(record, load_provenance(args.provenance))
+        if problems:
+            _print_problems("frp: readiness record disagrees with provenance:", problems)
+            return EXIT_INVALID
     except ReadinessError as exc:
         _print_problems("frp: invalid readiness record:", exc.problems)
         return EXIT_INVALID

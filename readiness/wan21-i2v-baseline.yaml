@@ -5,14 +5,14 @@
 # live in private, access-controlled records outside this public repository (see
 # docs/gpu-readiness.md). Do not fill in the null values below with guesses.
 #
-# Validate offline with:
+# Validate offline with (the provenance check is mandatory):
 #   frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
 # Validation checks that this template is internally consistent and that its pins match the
-# provenance inventory. A valid file is not permission to download weights, rent a GPU or
-# process any person's data.
+# provenance inventory (offline consistency, not upstream verification). A valid file is not
+# permission to download weights, rent a GPU or process any person's data.
 readiness_schema_version: "1.0"
 record_id: FRP-M004-READINESS-TEMPLATE
-reviewed_on: 2026-10-30
+template_updated_on: 2026-10-30 # date the template was edited; not evidence that any gate was reviewed
 protocol: wan2.1-i2v-baseline # design only: experiments/003-wan21-i2v-baseline-design.md
 
 # Pins copied from provenance/model-candidates.yaml (Research 005). Weight digests: not verified.

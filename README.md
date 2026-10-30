@@ -100,7 +100,7 @@ The synthetic example intentionally has unset execution fields and reports **NOT
 
 `frp provenance` checks the model-candidate inventory for internal consistency (pinned evidence for `verified` claims, no invented weight digests, no Wan 2.1 protocol on other architectures). It fetches nothing and does not re-verify upstream sources; every candidate is reported **NOT READY** for execution.
 
-`frp readiness` checks that the public GPU-readiness template is internally consistent and that its pins match the provenance inventory. Schema 1.0 can only express **pending** gates and no quote, so a passing check is **never** an approval to download weights, rent a GPU or process anyone's data.
+`frp readiness` checks that the public GPU-readiness template is internally consistent and that its pins match the provenance inventory, which must be supplied with `--provenance` (without it the command fails). This is an offline consistency check, not upstream verification. Schema 1.0 can only express **pending** gates and no quote, so a passing check is **never** an approval to download weights, rent a GPU or process anyone's data.
 
 Read [the harness guide](docs/harness.md) for schema requirements, adapter interfaces, result and report formats, privacy safeguards, exit codes and limitations.
 

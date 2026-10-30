@@ -436,9 +436,13 @@ statuses.
 
 ## GPU-readiness template (Milestone 004, PR 1)
 
-`frp readiness RECORD [--provenance INVENTORY] [--format text|json]` validates a readiness
+`frp readiness RECORD --provenance INVENTORY [--format text|json]` validates a readiness
 record such as [`readiness/wan21-i2v-baseline.yaml`](../readiness/wan21-i2v-baseline.yaml). It
 is **static and offline**, reads no media, and exists to stop the public template from drifting.
+`--provenance` is **required**: without it the command exits `2` (usage error) and reports
+nothing, because a record whose pins were only shape-checked must not be reported as valid. A
+mismatch with the inventory exits `1`. The comparison is an offline *consistency* check against
+the reviewed inventory, not verification of upstream sources or weights.
 The procedure it mirrors is in [GPU readiness protocol](gpu-readiness.md).
 
 **A valid record authorises nothing.** Readiness schema 1.0 can describe only a record in which:
@@ -449,7 +453,8 @@ The procedure it mirrors is in [GPU readiness protocol](gpu-readiness.md).
 | `hardware_requirements` | Each requirement exactly once, `status: unverified`, `value: null` (no VRAM, RAM, storage or runtime figure) |
 | `cost_quote` | `status: not_obtained` and every field `null` (provider, rate, region, budget cap, charges, …) |
 | `execution_controls` | Fixed: `use_prompt_extend: false`, original CLIP and VAE first-frame reference, no identity adapters, no remote inference services, neutral-motion prompts, private output. Undecided controls (seeds, sampler, steps, guidance, frame count, resolution, precision, frame indices, preprocessing, prompt template) are `null` (pending) or, if set, well formed (4n+1 frame count, non-negative unique seeds, `W*H` resolution) — but a set value is still not approved |
-| `target` | Wan 2.1 guard retained (`Wan-Video/Wan2.1`, `Wan-AI/Wan2.1-I2V-14B-480P`), full 40-hex pins; with `--provenance`, the pins must equal a candidate whose source commit and checkpoint revision are `verified` in the inventory |
+| `target` | Wan 2.1 guard retained (`Wan-Video/Wan2.1`, `Wan-AI/Wan2.1-I2V-14B-480P`), full 40-hex pins; the pins must equal a candidate whose source commit and checkpoint revision are `verified` in the provenance inventory (mandatory CLI cross-check) |
+| `template_updated_on` | ISO date the template was last edited. It is **not** evidence that any licence, consent or other gate was reviewed |
 | `protocol` | `wan2.1-i2v-baseline`, a **draft label** that is deliberately *not* registered in `PROTOCOL_SCOPES` or the result protocol table |
 
 Provenance schema 1.0 is unchanged: `execution_readiness` stays `not_ready` and `weight_sha256`
