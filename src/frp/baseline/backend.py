@@ -201,8 +201,9 @@ def verify_conditioning(
     * Both branches receive the *same* image conditioning: identical CLIP features and VAE
       first-frame condition (same tensor object and the same metadata), so guidance contrasts
       text only.
-    * The CLIP features the denoiser received are the CLIP route's output, and are the same
-      object at every step.
+    * The CLIP features and the VAE first-frame condition the denoiser received are the
+      respective routes' outputs (same tensor object and metadata), the same at every step.
+    * The number of positive/negative pairs equals the requested ``sampling_steps``.
     """
     problems = []
     token = request.reference.token
@@ -231,6 +232,12 @@ def verify_conditioning(
             problems.append("image conditioning changed between steps")
         if any(c.clip_fea_source != clip.output_source or c.clip_fea != clip.output for c in calls):
             problems.append("the denoiser did not receive the CLIP route's output")
+        if any(c.y_source != vae.output_source or c.y != vae.output for c in calls):
+            problems.append("the denoiser did not receive the VAE first-frame route's output")
+        if len(calls) // 2 != request.sampling_steps:
+            problems.append(
+                "the number of denoising steps differs from the requested sampling_steps"
+            )
     if problems:
         raise ConditioningContractViolation(problems)
     first = calls[0]

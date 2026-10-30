@@ -139,7 +139,7 @@ class FakeBackend:
     events: list[str] = field(default_factory=list)
     requests: list[GenerationRequest] = field(default_factory=list)
     loaded_with: list[VerifiedCheckpoint] = field(default_factory=list)
-    steps: int = 3
+    steps: int | None = None  # defaults to the request's sampling_steps
 
     @property
     def info(self) -> BackendInfo:
@@ -191,11 +191,16 @@ class FakeBackend:
         token = request.reference.token
         clip_out = _meta((1, 257, 1280))
         y_meta = _meta((20, 3, 60, 104))
+        y_seen = _meta((20, 3, 60, 104), "float32") if self.mode == "y_unrelated_meta" else y_meta
         vae_token = "ref-other" if self.mode == "vae_other_reference" else token
         calls = []
-        for step in range(self.steps):
+        for step in range(request.sampling_steps if self.steps is None else self.steps):
             for branch in ("positive", "negative"):
-                neg_y_source = 99 if self.mode == "cfg_y_differs" and branch == "negative" else 2
+                y_source = 2
+                if self.mode == "y_unrelated_source":  # both branches consistently use it
+                    y_source = 77
+                if self.mode == "cfg_y_differs" and branch == "negative":
+                    y_source = 99
                 neg_clip = 98 if self.mode == "cfg_clip_differs" and branch == "negative" else 1
                 calls.append(
                     CfgCallObservation(
@@ -203,8 +208,8 @@ class FakeBackend:
                         branch=branch,  # type: ignore[arg-type]
                         clip_fea=clip_out,
                         clip_fea_source=neg_clip if branch == "negative" else 1,
-                        y=y_meta,
-                        y_source=neg_y_source if branch == "negative" else 2,
+                        y=y_seen,
+                        y_source=y_source,
                         context=_meta((1, 512, 4096), "bfloat16"),
                     )
                 )

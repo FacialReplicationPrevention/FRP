@@ -3,7 +3,9 @@
 Every ``execute`` call runs the same ordered gates; any failure before generation raises
 :class:`~frp.baseline.interfaces.ExecutionRefused` and **nothing is loaded or generated**:
 
-1. the manifest is complete (``NOT EXECUTION READY`` otherwise) and the run belongs to it;
+0. the run equals its exact entry in the manifest's deterministic plan (else ``invalid_input``),
+   checked before authorisation or any reference lookup;
+1. the manifest is complete (``NOT EXECUTION READY`` otherwise);
 2. a private authorisation, supplied by an ``AuthorisationProvider``, permits this specific
    run, manifest, controls, pins, environment digest and expected weight hashes and references
    all seven human gates (the default provider denies everything);
@@ -59,7 +61,7 @@ from frp.baseline.manifest import (
     baseline_manifest_sha256,
     unset_execution_fields,
 )
-from frp.baseline.planner import BaselinePlannedRun
+from frp.baseline.planner import BaselinePlannedRun, generate_baseline_plan
 from frp.baseline.preflight import (
     GitSourceInspector,
     PreflightError,
@@ -115,6 +117,8 @@ class Wan21BaselineExecutor:
         self._manifest = manifest
         self._manifest_sha256 = baseline_manifest_sha256(manifest)
         self._controls_sha256 = baseline_controls_sha256(manifest)
+        # The only runs this executor will ever execute: the manifest's deterministic plan.
+        self._planned = {r.run_id: r for r in generate_baseline_plan(manifest).runs}
         self._backend = backend
         self._references = references
         self._checkpoint_dir = checkpoint_dir
@@ -164,12 +168,9 @@ class Wan21BaselineExecutor:
             raise ValueError("attempt_index must be >= 1")
         if (run.run_id, attempt_index) in self._used_attempts:
             raise ValueError("this attempt was already executed; attempts are never overwritten")
-        if (
-            run.generation_controls_sha256 != self._controls_sha256
-            or run.run_role != self._manifest.run_role
-            or not 1 <= run.prompt_index <= len(self._manifest.prompts)
-            or self._manifest.prompts[run.prompt_index - 1].id != run.prompt_id
-        ):
+        # Every field (id, index, pseudonym, split, prompt, seed, controls, conditioning) must equal
+        # the planned entry, before any authorisation or reference lookup.
+        if self._planned.get(run.run_id) != run:
             raise ExecutionRefused("invalid_input")
 
     def _authorise(self, run: BaselinePlannedRun) -> PrivateAuthorisation:

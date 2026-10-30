@@ -288,7 +288,14 @@ def test_generation_settings_are_passed_through_unchanged(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize(
     "mode",
-    ["vae_other_reference", "cfg_y_differs", "cfg_clip_differs", "cfg_order"],
+    [
+        "vae_other_reference",
+        "cfg_y_differs",
+        "cfg_clip_differs",
+        "cfg_order",
+        "y_unrelated_source",
+        "y_unrelated_meta",
+    ],
 )
 def test_conditioning_violations_fail_the_attempt_without_an_artefact(
     tmp_path: Path, mode: str
@@ -398,3 +405,99 @@ def test_importing_the_baseline_package_loads_no_ml_or_network_modules() -> None
 
 def test_source_commit_constant_is_the_reviewed_pin() -> None:
     assert SOURCE_COMMIT == "9737cba9c1c3c4d04b33fcad41c111989865d315"
+
+
+@pytest.mark.parametrize("steps", [1, 3])
+def test_cfg_step_count_must_equal_requested_sampling_steps(tmp_path: Path, steps: int) -> None:
+    s = Setup(tmp_path, backend=FakeBackend(steps=steps))  # manifest requests 2 steps
+    outcome = s.executor.execute(s.run, 1)
+    assert outcome.failure_detail == "conditioning_contract_violation"
+    assert outcome.execution.artefact is None
+
+
+def test_both_cfg_branches_using_the_same_unrelated_vae_tensor_is_rejected() -> None:
+    from frp.baseline.backend import (
+        CfgCallObservation,
+        ConditioningContractViolation,
+        ConditioningObservation,
+        RouteObservation,
+        verify_conditioning,
+    )
+    from tests.baseline_support import _meta
+
+    clip, y, ctx = _meta((1, 257, 1280)), _meta((20, 3, 60, 104)), _meta((1, 512, 4096))
+    request = GenerationRequest(
+        run_id="X-R0001",
+        attempt_index=1,
+        reference=FixedReferences().reference_for("SYN-101"),
+        prompt_text="p",
+        seed=1,
+        max_area=1,
+        frame_count=9,
+        sample_shift=3.0,
+        sample_solver="unipc",
+        sampling_steps=1,
+        guide_scale=5.0,
+        offload_model=False,
+        output_uri="private://x/y.mp4",
+        deadline_seconds=1.0,
+    )
+    token = request.reference.token
+
+    def observe(y_source: int) -> ConditioningObservation:
+        calls = tuple(
+            CfgCallObservation(0, branch, clip, 1, y, y_source, ctx)  # type: ignore[arg-type]
+            for branch in ("positive", "negative")
+        )
+        return ConditioningObservation(
+            RouteObservation(token, clip, 1), RouteObservation(token, y, 2), calls
+        )
+
+    assert verify_conditioning(observe(2), request).branches_share_image_conditioning
+    with pytest.raises(ConditioningContractViolation, match="VAE first-frame route's output"):
+        verify_conditioning(observe(5), request)  # consistent across branches, wrong source
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"run_id": "FRP-BASELINE-SYNTHETIC-EXAMPLE-R0002"},
+        {"run_index": 2},
+        {"identity_pseudonym": "SYN-102"},
+        {"identity_index": 2},
+        {"identity_split": "calibration"},
+        {"seed": 2002},
+        {"prompt_id": "other"},
+        {"prompt_index": 2},
+        {"run_role": "smoke"},
+    ],
+)
+def test_run_differing_from_the_planned_entry_is_rejected_before_any_activity(
+    tmp_path: Path, change: dict
+) -> None:
+    import dataclasses
+
+    s = Setup(tmp_path)
+    tampered = dataclasses.replace(s.run, **change)  # controls hash and prompt text unchanged
+    with pytest.raises(ExecutionRefused) as excinfo:
+        s.executor.execute(tampered, 1)
+    assert excinfo.value.code == "invalid_input"
+    assert s.provider.requests == []  # no authorisation asked
+    assert s.backend.events == []  # backend untouched
+    assert s.backend.requests == []
+
+
+def test_rejected_run_never_triggers_a_reference_lookup(tmp_path: Path) -> None:
+    import dataclasses
+
+    class CountingReferences(FixedReferences):
+        calls = 0
+
+        def reference_for(self, identity_pseudonym: str):
+            CountingReferences.calls += 1
+            return super().reference_for(identity_pseudonym)
+
+    s = Setup(tmp_path, references=CountingReferences())
+    with pytest.raises(ExecutionRefused):
+        s.executor.execute(dataclasses.replace(s.run, identity_pseudonym="SYN-102"), 1)
+    assert CountingReferences.calls == 0

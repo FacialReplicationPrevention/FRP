@@ -498,7 +498,7 @@ evaluated), `calibration` (identity split `calibration`) and `baseline` (split `
 `identity_overlap` reports shared identities between two manifests without printing pseudonyms.
 
 **Execution gates** (every one must pass, in order, before the backend loads anything):
-manifest complete → private authorisation for *this* run, manifest, controls, pins, environment
+run equals its exact entry in the manifest's deterministic plan (id, index, identity, split, prompt, seed, controls; checked before any authorisation or reference lookup) → manifest complete → private authorisation for *this* run, manifest, controls, pins, environment
 digest and expected weight hashes, citing all seven gates → no prompt-extension/`dashscope` module
 imported → backend dependencies available (the shipped backend refuses here) → source checkout
 clean and at the pinned commit → backend environment digest equals the approved one → every local
@@ -511,8 +511,9 @@ imported, the artefact/shape contract is broken, or the conditioning contract be
 **Conditioning contract.** `GenerationRequest` carries exactly one `reference` and has no
 prompt-extension field, so a request cannot name different CLIP and VAE sources. The executor
 additionally verifies what the backend *observed*: both routes consumed that reference; the
-denoiser received the CLIP route's output; every step has a positive then a negative CFG call; and
-both branches received identical CLIP features and VAE first-frame condition. Recorded metadata is
+denoiser received the CLIP route's **and** the VAE first-frame route's output at every step; every
+step has a positive then a negative CFG call, and the number of pairs equals the requested
+`sampling_steps`; and both branches received identical CLIP features and VAE first-frame condition. Recorded metadata is
 shape/dtype/device and branching only — never pixels, latents, embeddings, prompts, paths or the
 reference token.
 
