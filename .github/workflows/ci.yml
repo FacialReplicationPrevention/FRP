@@ -50,3 +50,5 @@ jobs:
         run: frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
       - name: Simulated pipeline smoke test (synthetic fixtures only)
         run: frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir "$RUNNER_TEMP/frp-simulated-report"
+      - name: Provenance inventory smoke test (offline, no weights)
+        run: frp provenance provenance/model-candidates.yaml

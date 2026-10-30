@@ -1,0 +1,375 @@
+# FRP model-candidate provenance inventory (provenance schema 1.0).
+#
+# Public, non-sensitive metadata only: repository identifiers, pinned revisions, licence
+# identifiers and links to primary sources. No weights, images, prompts, people or private paths.
+#
+# Statuses (see docs/harness.md and research/005-wan-model-candidates.md):
+#   verified      checked by FRP against the cited source at a pinned revision
+#   pending       value from a credible source; FRP check or human review incomplete
+#   not_verified  not yet checkable (e.g. weight digests before an approved download)
+#   unknown       not determinable from credible sources
+#
+# Validate offline with:  frp provenance provenance/model-candidates.yaml
+# Validation checks internal consistency only; it does not re-fetch or re-verify sources.
+# execution_readiness is fixed at not_ready: nothing here authorises downloads or GPU work.
+provenance_schema_version: "1.0"
+inventory_id: FRP-MODEL-CANDIDATES
+reviewed_on: 2026-10-30
+
+candidates:
+  # Initial reproducible baseline: the Wan 2.1 A/B/C/D CLIP x VAE protocol applies here only.
+  - candidate_id: wan2.1-i2v-14b-480p
+    model_family: wan2.1-i2v
+    task: image-to-video
+    provenance: official
+    frp_role: initial-baseline
+    source_repository: Wan-Video/Wan2.1
+    source_commit:
+      value: 9737cba9c1c3c4d04b33fcad41c111989865d315
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/tree/9737cba9c1c3c4d04b33fcad41c111989865d315
+    checkpoint_repository: Wan-AI/Wan2.1-I2V-14B-480P
+    checkpoint_revision:
+      value: 6b73f84e66371cdfe870c72acd6826e1d61cf279
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/tree/6b73f84e66371cdfe870c72acd6826e1d61cf279
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/LICENSE.txt
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/6b73f84e66371cdfe870c72acd6826e1d61cf279/README.md
+    conditioning:
+      value: [text_t5, clip_vision, vae_first_frame_concat, optional_vlm_prompt_extension]
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py#L219-L231
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py#L235-L238
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py#L240-L249
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py#L284-L319
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/modules/model.py#L202-L229
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/modules/model.py#L523-L531
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/modules/model.py#L561-L563
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/generate.py#L184-L189
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/generate.py#L392-L400
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/6b73f84e66371cdfe870c72acd6826e1d61cf279/config.json
+    derived_from: null
+    protocols: [wan2.1-i2v-clip-vae-2x2]
+    execution_readiness: not_ready
+
+  - candidate_id: wan2.1-i2v-14b-720p
+    model_family: wan2.1-i2v
+    task: image-to-video
+    provenance: official
+    frp_role: inventory-only
+    source_repository: Wan-Video/Wan2.1
+    source_commit:
+      value: 9737cba9c1c3c4d04b33fcad41c111989865d315
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/tree/9737cba9c1c3c4d04b33fcad41c111989865d315
+    checkpoint_repository: Wan-AI/Wan2.1-I2V-14B-720P
+    checkpoint_revision:
+      value: 8823af45fcc58a8aa999a54b04be9abc7d2aac98
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-720P/tree/8823af45fcc58a8aa999a54b04be9abc7d2aac98
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/LICENSE.txt
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-720P/blob/8823af45fcc58a8aa999a54b04be9abc7d2aac98/README.md
+    # Same i2v-14B code path as the 480P checkpoint; this checkpoint's config.json was not inspected.
+    conditioning:
+      value: [text_t5, clip_vision, vae_first_frame_concat, optional_vlm_prompt_extension]
+      status: pending
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/configs/__init__.py#L45-L49
+    derived_from: null
+    protocols: []
+    execution_readiness: not_ready
+
+  - candidate_id: wan2.1-i2v-14b-480p-diffusers
+    model_family: wan2.1-i2v
+    task: image-to-video
+    provenance: official-conversion
+    frp_role: inventory-only
+    source_repository: huggingface/diffusers
+    source_commit:
+      value: null
+      status: not_verified
+      evidence: []
+    checkpoint_repository: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
+    checkpoint_revision:
+      value: b184e23a8a16b20f108f727c902e769e873ffc73
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P-Diffusers/tree/b184e23a8a16b20f108f727c902e769e873ffc73
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: pending
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P-Diffusers/blob/b184e23a8a16b20f108f727c902e769e873ffc73/README.md
+    # A separate Diffusers implementation; not inspected by FRP.
+    conditioning:
+      value: null
+      status: not_verified
+      evidence: []
+    derived_from:
+      value: Wan-AI/Wan2.1-I2V-14B-480P
+      status: pending
+      evidence:
+        - https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/README.md?plain=1#L352-L353
+    protocols: []
+    execution_readiness: not_ready
+
+  # Optional later candidate. No CLIP-vision path: the Wan 2.1 A/B/C/D protocol does not apply.
+  - candidate_id: wan2.2-i2v-a14b
+    model_family: wan2.2-i2v
+    task: image-to-video
+    provenance: official
+    frp_role: later-candidate
+    source_repository: Wan-Video/Wan2.2
+    source_commit:
+      value: 1ea34ff48f87168174e12956e200b1d908b1c5ff
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/tree/1ea34ff48f87168174e12956e200b1d908b1c5ff
+    checkpoint_repository: Wan-AI/Wan2.2-I2V-A14B
+    checkpoint_revision:
+      value: 206a9ee1b7bfaaf8f7e4d81335650533490646a3
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/tree/206a9ee1b7bfaaf8f7e4d81335650533490646a3
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/LICENSE.txt
+        - https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/blob/206a9ee1b7bfaaf8f7e4d81335650533490646a3/README.md
+    conditioning:
+      value: [text_t5, vae_first_frame_concat, optional_vlm_prompt_extension]
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/configs/wan_i2v_A14B.py#L9-L37
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/image2video.py#L99-L119
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/image2video.py#L172-L204
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/image2video.py#L314-L323
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/image2video.py#L367-L402
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/modules/model.py#L158-L180
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/modules/model.py#L437-L445
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/generate.py#L169-L173
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/generate.py#L380-L387
+        - https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/blob/206a9ee1b7bfaaf8f7e4d81335650533490646a3/high_noise_model/config.json
+        - https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/blob/206a9ee1b7bfaaf8f7e4d81335650533490646a3/low_noise_model/config.json
+    derived_from: null
+    protocols: []
+    execution_readiness: not_ready
+
+  - candidate_id: wan2.2-ti2v-5b
+    model_family: wan2.2-ti2v
+    task: text-image-to-video
+    provenance: official
+    frp_role: inventory-only
+    source_repository: Wan-Video/Wan2.2
+    source_commit:
+      value: 1ea34ff48f87168174e12956e200b1d908b1c5ff
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/tree/1ea34ff48f87168174e12956e200b1d908b1c5ff
+    checkpoint_repository: Wan-AI/Wan2.2-TI2V-5B
+    checkpoint_revision:
+      value: 921dbaf3f1674a56f47e83fb80a34bac8a8f203e
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B/tree/921dbaf3f1674a56f47e83fb80a34bac8a8f203e
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/LICENSE.txt
+        - https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B/blob/921dbaf3f1674a56f47e83fb80a34bac8a8f203e/README.md
+    conditioning:
+      value: [text_t5, first_frame_latent_replacement, optional_vlm_prompt_extension]
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/configs/wan_ti2v_5B.py#L8-L36
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/textimage2video.py#L512
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/textimage2video.py#L550-L561
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/textimage2video.py#L573-L578
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/textimage2video.py#L598
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/wan/modules/model.py#L158-L180
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/generate.py#L380-L387
+        - https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B/blob/921dbaf3f1674a56f47e83fb80a34bac8a8f203e/config.json
+    derived_from: null
+    protocols: []
+    execution_readiness: not_ready
+
+  # Character animation is directly relevant to identity replication; its code was not traced.
+  - candidate_id: wan2.2-animate-14b
+    model_family: wan2.2-animate
+    task: character-animation
+    provenance: official
+    frp_role: inventory-only
+    source_repository: Wan-Video/Wan2.2
+    source_commit:
+      value: 1ea34ff48f87168174e12956e200b1d908b1c5ff
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/tree/1ea34ff48f87168174e12956e200b1d908b1c5ff
+    checkpoint_repository: Wan-AI/Wan2.2-Animate-14B
+    checkpoint_revision:
+      value: cb93a225fbaf1ca100f54e79da8f994995b689b3
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/tree/cb93a225fbaf1ca100f54e79da8f994995b689b3
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/LICENSE.txt
+        - https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/blob/cb93a225fbaf1ca100f54e79da8f994995b689b3/README.md
+    conditioning:
+      value: null
+      status: not_verified
+      evidence: []
+    derived_from: null
+    protocols: []
+    execution_readiness: not_ready
+
+  - candidate_id: wan2.2-s2v-14b
+    model_family: wan2.2-s2v
+    task: speech-to-video
+    provenance: official
+    frp_role: inventory-only
+    source_repository: Wan-Video/Wan2.2
+    source_commit:
+      value: 1ea34ff48f87168174e12956e200b1d908b1c5ff
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/tree/1ea34ff48f87168174e12956e200b1d908b1c5ff
+    checkpoint_repository: Wan-AI/Wan2.2-S2V-14B
+    checkpoint_revision:
+      value: dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b
+      status: verified
+      evidence:
+        - https://huggingface.co/Wan-AI/Wan2.2-S2V-14B/tree/dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: verified
+      evidence:
+        - https://github.com/Wan-Video/Wan2.2/blob/1ea34ff48f87168174e12956e200b1d908b1c5ff/LICENSE.txt
+        - https://huggingface.co/Wan-AI/Wan2.2-S2V-14B/blob/dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b/README.md
+    conditioning:
+      value: null
+      status: not_verified
+      evidence: []
+    derived_from: null
+    protocols: []
+    execution_readiness: not_ready
+
+  # Community derivatives: existence and declared base model only. Not inspected or executed.
+  - candidate_id: city96-wan2.1-i2v-14b-480p-gguf
+    model_family: wan2.1-i2v
+    task: image-to-video
+    provenance: derivative
+    frp_role: inventory-only
+    source_repository: null
+    source_commit:
+      value: null
+      status: unknown
+      evidence: []
+    checkpoint_repository: city96/Wan2.1-I2V-14B-480P-gguf
+    checkpoint_revision:
+      value: b4b6b3b3f0f64975fb33b1d5d1a46ca24e065f03
+      status: verified
+      evidence:
+        - https://huggingface.co/city96/Wan2.1-I2V-14B-480P-gguf/tree/b4b6b3b3f0f64975fb33b1d5d1a46ca24e065f03
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: pending
+      evidence:
+        - https://huggingface.co/city96/Wan2.1-I2V-14B-480P-gguf/blob/b4b6b3b3f0f64975fb33b1d5d1a46ca24e065f03/README.md
+    conditioning:
+      value: null
+      status: not_verified
+      evidence: []
+    derived_from:
+      value: Wan-AI/Wan2.1-I2V-14B-480P
+      status: pending
+      evidence:
+        - https://huggingface.co/city96/Wan2.1-I2V-14B-480P-gguf/blob/b4b6b3b3f0f64975fb33b1d5d1a46ca24e065f03/README.md
+    protocols: []
+    execution_readiness: not_ready
+
+  - candidate_id: lightx2v-wan2.1-i2v-14b-480p-distill
+    model_family: wan2.1-i2v
+    task: image-to-video
+    provenance: derivative
+    frp_role: inventory-only
+    source_repository: null
+    source_commit:
+      value: null
+      status: unknown
+      evidence: []
+    checkpoint_repository: lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v
+    checkpoint_revision:
+      value: 9bedb7ceaf40d43b47d892382612ff157ca15c52
+      status: verified
+      evidence:
+        - https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/9bedb7ceaf40d43b47d892382612ff157ca15c52
+    weight_sha256:
+      value: null
+      status: not_verified
+      evidence: []
+    licence:
+      value: Apache-2.0
+      status: pending
+      evidence:
+        - https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/9bedb7ceaf40d43b47d892382612ff157ca15c52/README.md
+    conditioning:
+      value: null
+      status: not_verified
+      evidence: []
+    derived_from:
+      value: Wan-AI/Wan2.1-I2V-14B-480P
+      status: pending
+      evidence:
+        - https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/9bedb7ceaf40d43b47d892382612ff157ca15c52/README.md
+    protocols: []
+    execution_readiness: not_ready
