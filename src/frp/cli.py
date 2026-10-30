@@ -1,5 +1,5 @@
-"""Command-line interface. Dry-run planning, simulated pipeline and static provenance checks only:
-never runs inference or fetches models.
+"""Command-line interface. Dry-run planning, simulated pipeline and static provenance/readiness
+checks only: never runs inference or fetches models.
 
 Exit codes: 0 success; 1 invalid manifest, plan, results or provenance inventory; 2 usage error;
 3 not ready (only with ``--require-ready``); 4 report files could not be written.
@@ -24,6 +24,14 @@ from frp.provenance import (
     ProvenanceInventory,
     load_provenance,
     pending_claims,
+)
+from frp.readiness import NOTICE as READINESS_NOTICE
+from frp.readiness import (
+    ReadinessError,
+    ReadinessRecord,
+    check_against_provenance,
+    load_readiness,
+    pending_control_fields,
 )
 from frp.reporting import CSV_FILENAME, MARKDOWN_FILENAME, SIMULATED_BANNER, write_reports
 from frp.results import ResultValidationError
@@ -160,7 +168,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="frp",
         description=(
             "FRP CPU-only harness. Dry-run planning, simulated pipeline and offline provenance "
-            "checks only; never runs inference or downloads models."
+            "and readiness-template checks only; never runs inference or downloads models."
         ),
     )
     parser.add_argument("--version", action="version", version=f"frp {__version__}")
@@ -216,6 +224,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     provenance.add_argument("inventory", help="path to a YAML/JSON provenance inventory")
     provenance.add_argument("--format", choices=("text", "json"), default="text")
+    readiness = subcommands.add_parser(
+        "readiness",
+        help="validate the public GPU-readiness template offline (grants no approval)",
+    )
+    readiness.add_argument("record", help="path to a YAML/JSON readiness record")
+    readiness.add_argument(
+        "--provenance",
+        metavar="INVENTORY",
+        help="also check that the record's pins agree with this provenance inventory",
+    )
+    readiness.add_argument("--format", choices=("text", "json"), default="text")
     return parser
 
 
@@ -354,6 +373,64 @@ def _provenance(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def build_readiness_report(record: ReadinessRecord) -> dict[str, Any]:
+    """Summary of a validated template. ``authorised_to_execute`` is always false."""
+    return {
+        "notice": READINESS_NOTICE,
+        "frp_version": __version__,
+        "readiness_schema_version": record.readiness_schema_version,
+        "record_id": record.record_id,
+        "protocol": record.protocol,
+        "authorised_to_execute": False,
+        "gates": {g.gate_id: g.status for g in record.gates},
+        "cost_quote_status": record.cost_quote.status,
+        "hardware_requirements": {r.requirement_id: r.status for r in record.hardware_requirements},
+        "pending_controls": pending_control_fields(record),
+    }
+
+
+def _render_readiness_text(report: dict[str, Any]) -> str:
+    lines = [
+        report["notice"],
+        "",
+        f"Record:   {report['record_id']} (readiness schema {report['readiness_schema_version']}, "
+        f"protocol {report['protocol']}, design only)",
+        "Authorised to execute: NO",
+        "",
+        "Gates (each a separate human approval):",
+        *(f"  {gate}: {status}" for gate, status in report["gates"].items()),
+        "",
+        f"Cost quote: {report['cost_quote_status']}",
+        "Hardware requirements: all unverified (to be assessed against a quoted provider spec)",
+        f"Pending execution controls ({len(report['pending_controls'])}): "
+        + (", ".join(report["pending_controls"]) or "none"),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _readiness(args: argparse.Namespace) -> int:
+    try:
+        record = load_readiness(args.record)
+        if args.provenance:
+            problems = check_against_provenance(record, load_provenance(args.provenance))
+            if problems:
+                _print_problems("frp: readiness record disagrees with provenance:", problems)
+                return EXIT_INVALID
+    except ReadinessError as exc:
+        _print_problems("frp: invalid readiness record:", exc.problems)
+        return EXIT_INVALID
+    except ProvenanceError as exc:
+        _print_problems("frp: invalid provenance inventory:", exc.problems)
+        return EXIT_INVALID
+    report = build_readiness_report(record)
+    if args.format == "json":
+        json.dump(report, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        sys.stdout.write(_render_readiness_text(report))
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     try:
@@ -365,6 +442,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _simulate(args)
     if args.command == "provenance":
         return _provenance(args)
+    if args.command == "readiness":
+        return _readiness(args)
 
     if not args.dry_run:
         print(
