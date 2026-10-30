@@ -15,6 +15,15 @@ from typing import Any, TextIO
 
 from frp import __version__
 from frp.aggregation import aggregate
+from frp.baseline.manifest import (
+    BaselineManifest,
+    load_baseline_manifest,
+)
+from frp.baseline.manifest import (
+    unset_execution_fields as baseline_unset_fields,
+)
+from frp.baseline.planner import BaselinePlan, BaselinePlanError, generate_baseline_plan
+from frp.baseline.protocol import ROLE_CLAIMS
 from frp.manifest import ExperimentManifest, ManifestError, load_manifest, unset_execution_fields
 from frp.planner import PlanInvariantError, PlannedRun, RunPlan, generate_run_plan
 from frp.provenance import NOTICE as PROVENANCE_NOTICE
@@ -27,6 +36,7 @@ from frp.provenance import (
 )
 from frp.readiness import NOTICE as READINESS_NOTICE
 from frp.readiness import (
+    ProvenanceMismatchError,
     ReadinessError,
     ReadinessRecord,
     check_against_provenance,
@@ -218,6 +228,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"synthetic fixture scenario (default: {DEFAULT_SCENARIO})",
     )
     simulate.add_argument("--overwrite", action="store_true", help="replace existing report files")
+    baseline = subcommands.add_parser(
+        "baseline-plan",
+        help=(
+            "validate a Wan 2.1 baseline manifest and print its single-condition run plan "
+            "(planning only: there is no execute option)"
+        ),
+    )
+    baseline.add_argument("manifest", help="path to a YAML/JSON baseline-0.1-draft manifest")
+    baseline.add_argument("--format", choices=("text", "json"), default="text")
+    baseline.add_argument("--show-pseudonyms", action="store_true", help="keep output private")
+    baseline.add_argument("--show-prompt-ids", action="store_true", help="keep output private")
+    baseline.add_argument(
+        "--require-ready",
+        action="store_true",
+        help=f"exit {EXIT_NOT_READY} if execution fields are unset (presence check only)",
+    )
     provenance = subcommands.add_parser(
         "provenance",
         help="validate a model-candidate provenance inventory offline (no network, no weights)",
@@ -328,6 +354,132 @@ def build_provenance_report(inventory: ProvenanceInventory) -> dict[str, Any]:
     }
 
 
+BASELINE_NOTICE = (
+    "BASELINE DRY RUN - planning only. No model was loaded, no inference was run, no GPU or "
+    "network was used, no image or biometric data was processed and nothing was measured. A valid "
+    "plan is NOT an authorisation; live baseline execution is disabled in this release."
+)
+
+
+def build_baseline_report(
+    manifest: BaselineManifest,
+    plan: BaselinePlan,
+    *,
+    show_pseudonyms: bool = False,
+    show_prompt_ids: bool = False,
+) -> dict[str, Any]:
+    """Privacy-safe baseline dry-run summary (no prompt text, paths or embeddings)."""
+    unset = baseline_unset_fields(manifest)
+    claims = ROLE_CLAIMS[manifest.run_role]
+    return {
+        "notice": BASELINE_NOTICE,
+        "dry_run": True,
+        "frp_version": __version__,
+        "schema_version": plan.schema_version,
+        "protocol": plan.protocol,
+        "experiment_id": plan.experiment_id,
+        "run_role": plan.run_role,
+        "claim_scope": claims.claim_scope,
+        "not_permitted_claims": claims.not_permitted,
+        "manifest_sha256": plan.manifest_sha256,
+        "generation_controls_sha256": plan.generation_controls_sha256,
+        "plan_valid": True,
+        "execution_ready": False,
+        "execution_readiness_label": "NOT EXECUTION READY",
+        "unset_execution_fields": unset,
+        "execution_blockers": [
+            *(["unset execution fields"] if unset else []),
+            "no private authorisation mechanism is wired",
+            "live Wan 2.1 backend is disabled",
+        ],
+        "counts": {
+            "identities": len(manifest.identities),
+            "prompts": len(manifest.prompts),
+            "seeds": len(manifest.seeds),
+            "planned_runs": len(plan.runs),
+        },
+        "pseudonyms_redacted": not show_pseudonyms,
+        "prompt_ids_redacted": not show_prompt_ids,
+        "runs": [
+            {
+                "run_id": run.run_id,
+                "identity": run.identity_pseudonym
+                if show_pseudonyms
+                else f"identity-{run.identity_index:02d}",
+                "identity_split": run.identity_split,
+                "prompt": run.prompt_id if show_prompt_ids else f"prompt-{run.prompt_index:02d}",
+                "seed": run.seed,
+                "clip_conditioning": run.clip_conditioning,
+                "vae_first_frame_conditioning": run.vae_first_frame_conditioning,
+            }
+            for run in plan.runs
+        ],
+    }
+
+
+def _render_baseline_text(report: dict[str, Any]) -> str:
+    counts = report["counts"]
+    lines = [
+        report["notice"],
+        "",
+        f"Experiment:        {report['experiment_id']} (schema {report['schema_version']}, "
+        f"role {report['run_role']})",
+        f"Manifest SHA-256:  {report['manifest_sha256']}",
+        f"Controls SHA-256:  {report['generation_controls_sha256']}",
+        f"Identities: {counts['identities']}  Prompts: {counts['prompts']}  "
+        f"Seeds: {counts['seeds']}  Planned runs: {counts['planned_runs']} (one per combination)",
+        "Plan check:        valid (original reference on both CLIP and VAE routes; "
+        "use_prompt_extend false)",
+        f"Claims:            {report['claim_scope']}",
+        f"Not permitted:     {report['not_permitted_claims']}",
+        f"Execution:         {report['execution_readiness_label']}",
+        *(f"  - unset: {name}" for name in report["unset_execution_fields"]),
+        *(f"  - blocker: {text}" for text in report["execution_blockers"]),
+    ]
+    if report["pseudonyms_redacted"]:
+        lines.append("Identity pseudonyms are redacted (--show-pseudonyms to reveal).")
+    if report["prompt_ids_redacted"]:
+        lines.append("Prompt ids are redacted (--show-prompt-ids to reveal).")
+    lines.append("")
+    header = ("run_id", "identity", "split", "prompt", "seed")
+    rows = [
+        (r["run_id"], r["identity"], r["identity_split"] or "-", r["prompt"], str(r["seed"]))
+        for r in report["runs"]
+    ]
+    widths = [max(len(row[i]) for row in (header, *rows)) for i in range(len(header))]
+    for row in (header, *rows):
+        lines.append(
+            "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip()
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _baseline_plan(args: argparse.Namespace) -> int:
+    try:
+        manifest = load_baseline_manifest(args.manifest)
+        plan = generate_baseline_plan(manifest)
+    except ManifestError as exc:
+        _print_problems("frp: invalid baseline manifest:", exc.problems)
+        return EXIT_INVALID
+    except BaselinePlanError as exc:
+        _print_problems("frp: baseline run plan failed invariants:", exc.problems)
+        return EXIT_INVALID
+    report = build_baseline_report(
+        manifest, plan, show_pseudonyms=args.show_pseudonyms, show_prompt_ids=args.show_prompt_ids
+    )
+    if args.format == "json":
+        json.dump(report, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        sys.stdout.write(_render_baseline_text(report))
+    if args.require_ready and report["unset_execution_fields"]:
+        print(
+            "frp: baseline manifest is not ready for execution (see unset fields)", file=sys.stderr
+        )
+        return EXIT_NOT_READY
+    return EXIT_OK
+
+
 def _render_provenance_text(report: dict[str, Any]) -> str:
     candidates = report["candidates"]
     lines = [
@@ -377,8 +529,16 @@ def _provenance(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def build_readiness_report(record: ReadinessRecord) -> dict[str, Any]:
-    """Summary of a validated template. ``authorised_to_execute`` is always false."""
+def build_readiness_report(
+    record: ReadinessRecord, inventory: ProvenanceInventory
+) -> dict[str, Any]:
+    """Summary of a validated template. ``authorised_to_execute`` is always false.
+
+    The provenance cross-check is performed here, against ``inventory``, so a record whose pins
+    differ from it can never be reported as matching: :class:`ReadinessError` is raised instead.
+    """
+    if problems := check_against_provenance(record, inventory):
+        raise ProvenanceMismatchError(problems)
     return {
         "notice": READINESS_NOTICE,
         "frp_version": __version__,
@@ -418,17 +578,17 @@ def _render_readiness_text(report: dict[str, Any]) -> str:
 def _readiness(args: argparse.Namespace) -> int:
     try:
         record = load_readiness(args.record)
-        problems = check_against_provenance(record, load_provenance(args.provenance))
-        if problems:
-            _print_problems("frp: readiness record disagrees with provenance:", problems)
-            return EXIT_INVALID
+        inventory = load_provenance(args.provenance)
+        report = build_readiness_report(record, inventory)
+    except ProvenanceMismatchError as exc:
+        _print_problems("frp: readiness record disagrees with provenance:", exc.problems)
+        return EXIT_INVALID
     except ReadinessError as exc:
         _print_problems("frp: invalid readiness record:", exc.problems)
         return EXIT_INVALID
     except ProvenanceError as exc:
         _print_problems("frp: invalid provenance inventory:", exc.problems)
         return EXIT_INVALID
-    report = build_readiness_report(record)
     if args.format == "json":
         json.dump(report, sys.stdout, indent=2)
         sys.stdout.write("\n")
@@ -450,6 +610,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _provenance(args)
     if args.command == "readiness":
         return _readiness(args)
+    if args.command == "baseline-plan":
+        return _baseline_plan(args)
 
     if not args.dry_run:
         print(

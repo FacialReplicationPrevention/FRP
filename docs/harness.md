@@ -52,7 +52,7 @@ validator rejects declaring the Wan 2.1 protocol for it (see
 | [`frp.reporting`](../src/frp/reporting.py) | Aggregate-only Markdown and CSV reports (report schema `1.0`) |
 | [`frp.provenance`](../src/frp/provenance.py) | Provenance schema `1.0`, claim status rules, protocol scope guard |
 | [`frp.readiness`](../src/frp/readiness.py) | Readiness schema `1.0`: public GPU-readiness template, pending-only gates, fixed controls |
-| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR`, `frp provenance INVENTORY`, `frp readiness RECORD` |
+| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR`, `frp provenance INVENTORY`, `frp readiness RECORD`, `frp baseline-plan MANIFEST` (planning only) |
 
 ## Reproducible local commands
 
@@ -67,6 +67,7 @@ frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
 frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
 frp provenance provenance/model-candidates.yaml
 frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
+frp baseline-plan examples/manifests/synthetic-baseline-dry-run.yaml
 ~~~
 
 `runs/` is git-ignored. `frp simulate` refuses to replace existing report files unless
@@ -443,6 +444,7 @@ is **static and offline**, reads no media, and exists to stop the public templat
 nothing, because a record whose pins were only shape-checked must not be reported as valid. A
 mismatch with the inventory exits `1`. The comparison is an offline *consistency* check against
 the reviewed inventory, not verification of upstream sources or weights.
+`build_readiness_report(record, inventory)` performs the same cross-check itself and raises `ProvenanceMismatchError` instead of reporting, so no caller can mark an unchecked record as provenance-matched.
 The procedure it mirrors is in [GPU readiness protocol](gpu-readiness.md).
 
 **A valid record authorises nothing.** Readiness schema 1.0 can describe only a record in which:
@@ -462,6 +464,85 @@ cannot be `verified`. Making a gate grantable, or weight digests verifiable afte
 would be a *separately proposed, versioned* extension with its own review. The output always
 states `Authorised to execute: NO` (`authorised_to_execute: false` in JSON). Validation errors
 never echo input values or unknown key names.
+
+## Wan 2.1 baseline executor contracts (Milestone 004, PR 2)
+
+Subpackage [`frp.baseline`](../src/frp/baseline/). Design: [Experiment 003](../experiments/003-wan21-i2v-baseline-design.md).
+**Contracts and a mocked adapter only: live execution is disabled, nothing has been run on a GPU,
+no weight has been downloaded or hashed, and no real portrait has been processed.**
+
+**Why a separate protocol.** `wan2.1-i2v-baseline` is one unaltered condition (the same original
+reference on the CLIP-vision and VAE first-frame routes, no variants, no alteration, no pairing).
+It supports descriptive measurement only, never a between-condition contrast. It is registered in
+`frp.baseline.protocol`, constrained to the reviewed Wan 2.1 source/checkpoint pins, and is
+**not** added to `frp.provenance.PROTOCOL_SCOPES` or `frp.results`; the A/B/C/D manifest, planner,
+`RunExecutor`, `RunResult`/`ResultSet` and their invariants are unchanged. A baseline manifest
+never validates as an ablation manifest, nor the reverse.
+
+| Module | Purpose |
+| --- | --- |
+| `protocol` | Protocol id, pins, reviewed 480P sizes, upstream solver choices, role claims |
+| `manifest` | `baseline-0.1-draft` manifest: decided controls are required single-value keys (`use_prompt_extend: false`, original CLIP/VAE, no adapters, no remote services, private storage); undecided controls and hashes may be `null`; `unset_execution_fields` explains `NOT EXECUTION READY` |
+| `planner` | identities × prompts × non-negative seeds, one run each; ids `<EXPERIMENT_ID>-R<NNNN>` (no A/B/C/D suffix) |
+| `results` | `BaselineResultSet`: separate **attempts** (every try, never overwritten), **execution failures** (category + detail) and **unexecuted runs** (reason); reuses `ExecutionRecord`, `ArtefactRef`, `FrameEvaluation`, `QualityEvaluation` and component info |
+| `interfaces` | `BaselineExecutor(BaselinePlannedRun, attempt_index)` |
+| `backend` | `Wan21Backend` protocol (the only place torch/wan could ever be touched), request/observation types, `verify_conditioning` |
+| `executor` | `Wan21BaselineExecutor`: ordered fail-closed gates, then load/generate with network blocked, always cleanup |
+| `preflight` | local SHA-256 of **every** checkpoint file, source-commit check, environment digest, network and prompt-extension module guards |
+| `authorisation` | private authorisation *interface*; only `DenyAllAuthorisation` ships |
+| `orchestrator` | runs a plan, bounded retries, halts, full accounting |
+| `upstream` | the live backend: **disabled** placeholder; imports nothing heavy |
+
+**Roles.** `smoke` (one identity/prompt/seed, no split, technical claim only; no similarity is ever
+evaluated), `calibration` (identity split `calibration`) and `baseline` (split `evaluation`).
+`identity_overlap` reports shared identities between two manifests without printing pseudonyms.
+
+**Execution gates** (every one must pass, in order, before the backend loads anything):
+manifest complete → private authorisation for *this* run, manifest, controls, pins, environment
+digest and expected weight hashes, citing all seven gates → no prompt-extension/`dashscope` module
+imported → backend dependencies available (the shipped backend refuses here) → source checkout
+clean and at the pinned commit → backend environment digest equals the approved one → every local
+weight file hashed and equal to the approved private manifest (no missing, extra or symlinked
+files). The backend's `load` accepts only a `VerifiedCheckpoint` that the hashing step issues.
+Generation then runs with socket connections and name lookups blocked (best effort, in-process
+only); an attempt is a *failure* if anything tried the network, a prompt-extension module was
+imported, the artefact/shape contract is broken, or the conditioning contract below is violated.
+
+**Conditioning contract.** `GenerationRequest` carries exactly one `reference` and has no
+prompt-extension field, so a request cannot name different CLIP and VAE sources. The executor
+additionally verifies what the backend *observed*: both routes consumed that reference; the
+denoiser received the CLIP route's output; every step has a positive then a negative CFG call; and
+both branches received identical CLIP features and VAE first-frame condition. Recorded metadata is
+shape/dtype/device and branching only — never pixels, latents, embeddings, prompts, paths or the
+reference token.
+
+**What a mock success means.** Success with a fake backend proves the *executor's control flow and
+record contracts* on CPU. It is **not** a Wan 2.1 inference, says nothing about the model, and its
+results are marked `simulated: true` with a scenario label. Only `simulated: false` results from a
+verified, authorised live run could count, and none exists.
+
+**Private authorisation.** `PrivateAuthorisation` is a documented interface, not an approval:
+readiness schema 1.0 stays fully `pending`, and a passing `frp readiness`, a populated manifest,
+an environment flag or a merged PR is never treated as permission. A grant must name the run and
+cite one private record per gate. No real provider exists; deciding who may issue grants and how
+they are signed and stored is a pending, separately reviewed integration point, so live execution
+stays disabled.
+
+**CLI.** `frp baseline-plan MANIFEST [--format text|json] [--show-pseudonyms]
+[--show-prompt-ids] [--require-ready]` validates and plans. There is no execute, download or
+live option; unknown flags are usage errors. It always reports `NOT EXECUTION READY` blockers
+(unset fields, no private authorisation mechanism, disabled live backend), distinguishing a valid
+plan from execution readiness. Pseudonyms and prompt ids are redacted to ordinals by default.
+
+**Still unverified or unwired** (must be settled before any approved GPU run): the live backend and
+its instrumentation of the upstream flow (see `frp.baseline.upstream`; no upstream call has been
+exercised); the approved software environment and its digest; local SHA-256 of the real
+checkpoint files and the private expected manifest; the hardware, runtime and cost figures; the
+private authorisation provider; reference-image preprocessing and storage; face and quality
+evaluators; the numerical controls (`frame_count`, `resolution`, steps, guidance, shift,
+frame indices); and the seven human approvals in [GPU readiness](gpu-readiness.md). The
+hash check is not atomic with loading (files could change between verification and load on a
+shared filesystem), and the network guard does not cover subprocesses.
 
 ## Known limitations
 
@@ -491,9 +572,10 @@ never echo input values or unknown key names.
   tested in CI.
 - `frp readiness` checks the public template only. It cannot confirm that any licence, consent,
   storage, provider or budget review took place, and prompt extension is **not yet enforced** by
-  any executor or by the Wan 2.1 A/B/C/D manifest. No baseline manifest, run plan, result schema
-  or executor exists; [Experiment 003](../experiments/003-wan21-i2v-baseline-design.md) is a
-  design only.
+  any A/B/C/D executor or by the Wan 2.1 A/B/C/D manifest (the baseline contracts below do lock it).
+  The baseline manifest, plan, result schema and mock-tested executor exist, but the live backend
+  is disabled and unverified; see the section above and
+  [Experiment 003](../experiments/003-wan21-i2v-baseline-design.md).
 
 ## Dependency versioning strategy
 

@@ -1,8 +1,8 @@
 # Experiment 003 — Wan 2.1 I2V single-condition baseline (design only)
 
 **Date:** 2026-10-30
-**Status:** Design only — **not implemented, not executed, not reviewed.** No model has been run and nothing has been measured.
-**Milestone:** [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) (Roadmap Phase 3), PR 1 of 3.
+**Status:** Design. PR 2 implements the CPU-testable manifest, plan and result contracts and a mock-tested executor boundary (see [Implementation status](#implementation-status-milestone-004-pr-2)); the design itself is **not reviewed**, live execution is **disabled**, no model has been run and nothing has been measured.
+**Milestone:** [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) (Roadmap Phase 3), PRs 1 and 2 of 3.
 **Builds on:** [Experiment 001](001-baseline-protocol.md) (generic baseline plan, unchanged), [Research 001](../research/001-identity-replication-measurement.md), [Research 005](../research/005-wan-model-candidates.md).
 **Distinct from:** [Experiment 002](002-conditioning-ablation-protocol.md), the Wan 2.1 CLIP × VAE A/B/C/D diagnostic ablation. That design, its manifest schema 1.0 and result protocol `wan2.1-i2v-clip-vae-2x2` are unchanged.
 **Gates and controls:** [GPU readiness protocol](../docs/gpu-readiness.md); [private review specification](../docs/private-review-viewer.md).
@@ -104,6 +104,16 @@ The smoke test passes only if, for the single consented reference: the executed 
 4. Attempt-selection rule when retries occur.
 5. Whether a baseline-specific protocol id should be added to the provenance/results registries, which needs its own scientific review.
 6. Whether `use_prompt_extend` should become a locked field of the existing manifest schema 1.0 or only of the new baseline schema.
+
+## Implementation status (Milestone 004, PR 2)
+
+Implemented in [`frp.baseline`](../src/frp/baseline/) and described in the [harness guide](../docs/harness.md#wan-21-baseline-executor-contracts-milestone-004-pr-2); everything below is CPU-only and mock-tested.
+
+- **Manifest/plan/result (`baseline-0.1-draft`).** Implemented as separate types; the A/B/C/D contracts are untouched. Departures from the draft in §3–4, each open to review: the manifest adds `checkpoint_revision`, `sample_shift`, `offload_model`, `negative_prompt_policy` (fixed to the upstream config default), `generator` (fixed to the upstream seeded generator) and `remote_inference_services`; `resolution` is limited to the 480P-class sizes `480*832` and `832*480`; `sampler` is limited to upstream's `unipc`/`dpm++`; attempt records add a `failure_detail` (finer than the reused `FailureCategory`) rather than new categories; unexecuted runs carry a `reason`.
+- **Protocol registration.** `wan2.1-i2v-baseline` is registered only in `frp.baseline.protocol`, constrained to the pinned Wan 2.1 source and checkpoint; decision 5 in §7 (adding it to the provenance/results registries) stays open.
+- **Human go/no-go input.** Defined as a private `PrivateAuthorisation` interface with a deny-all default; no provider that grants anything exists, so execution stays disabled.
+- **Retries.** Only transient failures are retried, up to `max_attempts` (default 1), each as a new attempt; every attempt is kept. The attempt-selection rule for analysis (decision 4) is still open.
+- **Not done:** the live backend, evaluators, calibration, any measurement. Prompt extension is now locked in the baseline manifest only (decision 6: not extended to schema 1.0).
 
 ## Limitations
 

@@ -54,3 +54,5 @@ jobs:
         run: frp provenance provenance/model-candidates.yaml
       - name: Readiness template smoke test (offline; grants no approval)
         run: frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
+      - name: Baseline dry-run smoke test (planning only; no execution path exists)
+        run: frp baseline-plan examples/manifests/synthetic-baseline-dry-run.yaml
