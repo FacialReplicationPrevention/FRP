@@ -1,13 +1,17 @@
-# FRP CPU-only harness — manifest, A/B/C/D planner, simulated pipeline and provenance validator
+# FRP CPU-only harness — manifest, A/B/C/D planner, simulated pipeline, provenance and readiness validators
 
 **Status:** Phase 2 Milestones 001 (manifest schema and dry-run planner,
 [issue #1](https://github.com/FacialReplicationPrevention/FRP/issues/1),
 [PR #2](https://github.com/FacialReplicationPrevention/FRP/pull/2)) and 002 (simulated
 execution, evaluation and reporting,
 [issue #5](https://github.com/FacialReplicationPrevention/FRP/issues/5),
-[PR #6](https://github.com/FacialReplicationPrevention/FRP/pull/6)) are merged. Phase 2b
+[PR #6](https://github.com/FacialReplicationPrevention/FRP/pull/6)) and Phase 2b
 Milestone 003 (model provenance inventory and offline validator,
-[issue #7](https://github.com/FacialReplicationPrevention/FRP/issues/7)) is under review.
+[issue #7](https://github.com/FacialReplicationPrevention/FRP/issues/7),
+[PR #8](https://github.com/FacialReplicationPrevention/FRP/pull/8)) are merged. Milestone 004
+([issue #9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is current; its PR 1
+adds the offline readiness-template check described
+[below](#gpu-readiness-template-milestone-004-pr-1) and design documents only.
 
 **No real inference or measurement.** The harness loads no model, runs no inference, reads no
 images, computes no embeddings and has **measured no scientific outcome**. A valid manifest,
@@ -33,6 +37,7 @@ validator rejects declaring the Wan 2.1 protocol for it (see
    records against the plan, aggregates them identity-first and writes aggregate-only
    Markdown/CSV reports (`frp simulate …`).
 5. Validates the model-candidate provenance inventory offline (`frp provenance …`).
+6. Validates the public GPU-readiness template offline (`frp readiness …`); it grants nothing.
 
 | Module | Responsibility |
 | --- | --- |
@@ -46,7 +51,8 @@ validator rejects declaring the Wan 2.1 protocol for it (see
 | [`frp.aggregation`](../src/frp/aggregation.py) | Frame → clip → identity → variant summaries and paired contrasts |
 | [`frp.reporting`](../src/frp/reporting.py) | Aggregate-only Markdown and CSV reports (report schema `1.0`) |
 | [`frp.provenance`](../src/frp/provenance.py) | Provenance schema `1.0`, claim status rules, protocol scope guard |
-| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR`, `frp provenance INVENTORY` |
+| [`frp.readiness`](../src/frp/readiness.py) | Readiness schema `1.0`: public GPU-readiness template, pending-only gates, fixed controls |
+| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR`, `frp provenance INVENTORY`, `frp readiness RECORD` |
 
 ## Reproducible local commands
 
@@ -60,6 +66,7 @@ pytest -q
 frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
 frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
 frp provenance provenance/model-candidates.yaml
+frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
 ~~~
 
 `runs/` is git-ignored. `frp simulate` refuses to replace existing report files unless
@@ -427,6 +434,35 @@ protocols, then every claim that is not `verified`, and states that every candid
 **NOT READY** for execution. `--format json` emits the same summary with claim values and
 statuses.
 
+## GPU-readiness template (Milestone 004, PR 1)
+
+`frp readiness RECORD --provenance INVENTORY [--format text|json]` validates a readiness
+record such as [`readiness/wan21-i2v-baseline.yaml`](../readiness/wan21-i2v-baseline.yaml). It
+is **static and offline**, reads no media, and exists to stop the public template from drifting.
+`--provenance` is **required**: without it the command exits `2` (usage error) and reports
+nothing, because a record whose pins were only shape-checked must not be reported as valid. A
+mismatch with the inventory exits `1`. The comparison is an offline *consistency* check against
+the reviewed inventory, not verification of upstream sources or weights.
+The procedure it mirrors is in [GPU readiness protocol](gpu-readiness.md).
+
+**A valid record authorises nothing.** Readiness schema 1.0 can describe only a record in which:
+
+| Section | What schema 1.0 enforces |
+| --- | --- |
+| `gates` | Each of the seven gates exactly once, `status: pending`, `approval_record: null`. `approved` (or any other value) is rejected; approvals, consent and quotes belong in private records |
+| `hardware_requirements` | Each requirement exactly once, `status: unverified`, `value: null` (no VRAM, RAM, storage or runtime figure) |
+| `cost_quote` | `status: not_obtained` and every field `null` (provider, rate, region, budget cap, charges, …) |
+| `execution_controls` | Fixed: `use_prompt_extend: false`, original CLIP and VAE first-frame reference, no identity adapters, no remote inference services, neutral-motion prompts, private output. Undecided controls (seeds, sampler, steps, guidance, frame count, resolution, precision, frame indices, preprocessing, prompt template) are `null` (pending) or, if set, well formed (4n+1 frame count, non-negative unique seeds, `W*H` resolution) — but a set value is still not approved |
+| `target` | Wan 2.1 guard retained (`Wan-Video/Wan2.1`, `Wan-AI/Wan2.1-I2V-14B-480P`), full 40-hex pins; the pins must equal a candidate whose source commit and checkpoint revision are `verified` in the provenance inventory (mandatory CLI cross-check) |
+| `template_updated_on` | ISO date the template was last edited. It is **not** evidence that any licence, consent or other gate was reviewed |
+| `protocol` | `wan2.1-i2v-baseline`, a **draft label** that is deliberately *not* registered in `PROTOCOL_SCOPES` or the result protocol table |
+
+Provenance schema 1.0 is unchanged: `execution_readiness` stays `not_ready` and `weight_sha256`
+cannot be `verified`. Making a gate grantable, or weight digests verifiable after local hashing,
+would be a *separately proposed, versioned* extension with its own review. The output always
+states `Authorised to execute: NO` (`authorised_to_execute: false` in JSON). Validation errors
+never echo input values or unknown key names.
+
 ## Known limitations
 
 - No real inference, image transform, face detection, identity evaluation or video-quality
@@ -453,6 +489,11 @@ statuses.
   control.
 - Dependency lower bounds in `pyproject.toml` are untested; only `constraints.txt` pins are
   tested in CI.
+- `frp readiness` checks the public template only. It cannot confirm that any licence, consent,
+  storage, provider or budget review took place, and prompt extension is **not yet enforced** by
+  any executor or by the Wan 2.1 A/B/C/D manifest. No baseline manifest, run plan, result schema
+  or executor exists; [Experiment 003](../experiments/003-wan21-i2v-baseline-design.md) is a
+  design only.
 
 ## Dependency versioning strategy
 

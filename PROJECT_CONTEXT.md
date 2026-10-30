@@ -1,7 +1,7 @@
 # FRP — Project context and scientific rationale
 
 **Last updated:** 2026-10-30  
-**Project stage:** Early research, experiment design, pinned static source review of candidate models, and a CPU-only harness with a *simulated* pipeline and offline provenance validation; no model inference and no Wan GPU experiments reported.
+**Project stage:** Early research, experiment design, pinned static source review of candidate models (Milestone 003, merged), and a CPU-only harness with a *simulated* pipeline, offline provenance validation and an offline GPU-readiness template check. Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is current and its first PR is CPU-only preparation. No model inference, GPU run or evaluation of real people has taken place, and no Wan experiment results are reported.
 
 ## What is FRP?
 
@@ -63,7 +63,9 @@ FRP is a **cross-model** research project, not a Wan 2.1-only project. Experimen
 - **Distinct properties:** facial identity retention, content/safety capabilities and authorisation are separate questions. Derivative fine-tunes with relaxed content restrictions, and quantised or distilled derivatives that lower hardware requirements, matter to the threat model and could undo a future model-level mitigation; initial FRP experiments remain neutral, consented and non-explicit, and FRP does not acquire or test explicit-content checkpoints.
 - **Model-specific reproducibility and provenance:** every model studied needs its own pinned source commit, checkpoint revision and weight hashes, licence review, a verified description of its conditioning paths and a reviewed protocol identifier. These are recorded in the machine-readable [provenance inventory](provenance/model-candidates.yaml) with explicit `verified` / `pending` / `not_verified` / `unknown` statuses and checked offline by `frp provenance`, which refuses to apply the Wan 2.1 protocol to any other architecture. A valid inventory is internally consistent, not proof of the recorded facts.
 
-Model selection and verification are Milestone 003 ([#7](https://github.com/FacialReplicationPrevention/FRP/issues/7), documentation tracker [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)) and Phase 2b of the [roadmap](ROADMAP.md). The recommended initial baseline is a recommendation, not an authorisation to download weights or run GPU jobs.
+Model selection and verification were Milestone 003 ([#7](https://github.com/FacialReplicationPrevention/FRP/issues/7), PR [#8](https://github.com/FacialReplicationPrevention/FRP/pull/8), merged; documentation tracker [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)) and Phase 2b of the [roadmap](ROADMAP.md). The recommended initial baseline is a recommendation, not an authorisation to download weights or run GPU jobs.
+
+**Current milestone — Milestone 004** ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)): a controlled Wan 2.1 baseline, calibration and private visual review, in three gated PRs. PR 1 (this stage) is **preparation only**: a [GPU readiness protocol](docs/gpu-readiness.md) defining seven separate human approvals (licence and intended use; consent and data processing; restricted storage, retention and deletion; cloud-provider terms; quote and budget cap; checkpoint download and hashing; the GPU smoke test), a blank cost-quote template, the [single-condition baseline design](experiments/003-wan21-i2v-baseline-design.md) (distinct from A/B/C/D, using the original reference on both Wan 2.1 image routes with `use_prompt_extend: false`) and a [private visual-review specification](docs/private-review-viewer.md). Every gate is pending; the GPU, inference and evaluation have **not** run. Wan 2.2 has no transferable A/B/C/D protocol.
 
 ## Current experimental hypothesis
 
@@ -98,6 +100,8 @@ A lower similarity score alone is **not a successful prevention result**; an abs
 - [Research 005 — Wan model candidates](research/005-wan-model-candidates.md): pinned source verification of Wan 2.1 and 2.2, candidate inventory and baseline recommendation.
 - [Experiment 001 — Baseline protocol](experiments/001-baseline-protocol.md): evaluation baseline plan.
 - [Experiment 002 — Conditioning ablation protocol](experiments/002-conditioning-ablation-protocol.md): proposed pilot and data schema.
+- [Experiment 003 — Wan 2.1 I2V single-condition baseline](experiments/003-wan21-i2v-baseline-design.md): design only; baseline contract separate from the ablation.
+- [GPU readiness protocol](docs/gpu-readiness.md) and [private visual-review specification](docs/private-review-viewer.md): Milestone 004 design documents; nothing approved or built.
 
 **Evidence status:** These are literature/source-code studies and proposed protocols. The project has **not** reported empirical model mitigation results. Do not imply that any tested protection, percentage reduction or universal safeguard exists. The harness's simulated reports ([docs/harness.md](docs/harness.md)) are software tests on synthetic fixtures, not evidence, and a valid provenance inventory is a consistency check, not verification of model behaviour.
 

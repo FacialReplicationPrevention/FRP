@@ -15,6 +15,9 @@ Read these documents before beginning work:
 - [Research 004](research/004-conditioning-ablation-design.md) — ablation design (Wan 2.1 only).
 - [Research 005](research/005-wan-model-candidates.md) — pinned Wan 2.1/2.2 source verification, candidate inventory and baseline recommendation.
 - [Experiment 002](experiments/002-conditioning-ablation-protocol.md) — proposed protocol.
+- [Experiment 003](experiments/003-wan21-i2v-baseline-design.md) — single-condition baseline design (Milestone 004; design only).
+- [GPU readiness protocol](docs/gpu-readiness.md) — separate human approvals, cost-quote template and execution allowlist (nothing approved).
+- [Private visual-review specification](docs/private-review-viewer.md) — local-only viewer requirements (not built).
 - [Harness guide](docs/harness.md) — manifest, planner, simulated pipeline, report and provenance contracts.
 
 ## Scientific integrity: mandatory
@@ -59,6 +62,10 @@ FRP is cross-model, but the A/B/C/D CLIP/VAE design, run plan and result protoco
 Record these in [`provenance/model-candidates.yaml`](provenance/model-candidates.yaml) and run `frp provenance provenance/model-candidates.yaml`. Use `verified` only for facts you checked against a pinned primary source; otherwise use `pending`, `not_verified` or `unknown` with `null` values. Never invent weight digests or mark them verified, and never mark a candidate ready for execution. The validator checks consistency only; it cannot tell whether a link really supports a claim, so reviewers must follow the links.
 
 Do not adapt the Wan 2.1 protocol to another model (e.g. Wan 2.2, which has no CLIP-vision path at its pinned commit) without a documented, reviewed protocol of its own. Do not add a protocol id to `PROTOCOL_SCOPES` in `frp.provenance`, or widen `WAN21_SOURCE_REPOSITORY` / `WAN21_I2V_CHECKPOINTS` in `frp.manifest`, without that review.
+
+## GPU readiness and human approvals
+
+The [GPU readiness protocol](docs/gpu-readiness.md) defines seven **separate** human approvals (licence and intended use; consent and data processing; restricted storage, retention and deletion; cloud-provider terms; quote and budget cap; checkpoint download and hashing; the GPU smoke test). Agents must never grant, infer or record an approval, quote, price, hardware figure or consent. A filled-in field, a valid `frp readiness` result, a passing test or a merged PR is **not** an approval to download weights, rent a GPU or process any person's data. Keep `readiness/wan21-i2v-baseline.yaml` fully `pending`; schema 1.0 cannot express anything else, and granting a gate needs a separately reviewed schema version. Keep `use_prompt_extend: false` and the original reference on both Wan 2.1 routes in the baseline. Do not reuse the A/B/C/D plan to run a single baseline condition; see [Experiment 003](experiments/003-wan21-i2v-baseline-design.md).
 
 ## Simulated outputs
 

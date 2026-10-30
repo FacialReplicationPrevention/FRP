@@ -52,3 +52,5 @@ jobs:
         run: frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir "$RUNNER_TEMP/frp-simulated-report"
       - name: Provenance inventory smoke test (offline, no weights)
         run: frp provenance provenance/model-candidates.yaml
+      - name: Readiness template smoke test (offline; grants no approval)
+        run: frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml

@@ -1,0 +1,85 @@
+# FRP GPU-readiness TEMPLATE for the Wan 2.1 I2V single-condition baseline (readiness schema 1.0).
+#
+# THIS FILE AUTHORISES NOTHING. Every gate is pending, no quote has been obtained and no hardware
+# figure is entered. Schema 1.0 cannot represent an approval, a quote or a consent record: those
+# live in private, access-controlled records outside this public repository (see
+# docs/gpu-readiness.md). Do not fill in the null values below with guesses.
+#
+# Validate offline with (the provenance check is mandatory):
+#   frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
+# Validation checks that this template is internally consistent and that its pins match the
+# provenance inventory (offline consistency, not upstream verification). A valid file is not
+# permission to download weights, rent a GPU or process any person's data.
+readiness_schema_version: "1.0"
+record_id: FRP-M004-READINESS-TEMPLATE
+template_updated_on: 2026-10-30 # date the template was edited; not evidence that any gate was reviewed
+protocol: wan2.1-i2v-baseline # design only: experiments/003-wan21-i2v-baseline-design.md
+
+# Pins copied from provenance/model-candidates.yaml (Research 005). Weight digests: not verified.
+target:
+  candidate_id: wan2.1-i2v-14b-480p
+  source_repository: Wan-Video/Wan2.1
+  source_commit: 9737cba9c1c3c4d04b33fcad41c111989865d315
+  checkpoint_repository: Wan-AI/Wan2.1-I2V-14B-480P
+  checkpoint_revision: 6b73f84e66371cdfe870c72acd6826e1d61cf279
+
+# Seven separate human approvals. Approving one never implies another.
+gates:
+  - {gate_id: licence_and_intended_use, status: pending, approval_record: null}
+  - {gate_id: consent_and_data_processing, status: pending, approval_record: null}
+  - {gate_id: restricted_storage_retention_deletion, status: pending, approval_record: null}
+  - {gate_id: cloud_provider_terms, status: pending, approval_record: null}
+  - {gate_id: quote_and_budget_cap, status: pending, approval_record: null}
+  - {gate_id: checkpoint_download_and_hashing, status: pending, approval_record: null}
+  - {gate_id: gpu_smoke_test, status: pending, approval_record: null}
+
+# Requirements to ASSESS, not facts. Fill only from a quoted provider specification and the
+# upstream documentation at the pinned commit.
+hardware_requirements:
+  - {requirement_id: gpu_vram_gib, status: unverified, value: null}
+  - {requirement_id: system_ram_gib, status: unverified, value: null}
+  - {requirement_id: weight_storage_gib, status: unverified, value: null}
+  - {requirement_id: working_storage_gib, status: unverified, value: null}
+  - {requirement_id: runtime_per_clip_minutes, status: unverified, value: null}
+
+# TEMPLATE ONLY: no quote has been obtained. Never invent a price, quota or provider.
+cost_quote:
+  status: not_obtained
+  provider_name: null
+  gpu_model: null
+  gpu_vram_gib: null
+  region: null
+  quote_source: null
+  quote_date: null
+  currency: null
+  gpu_hourly_rate: null
+  storage_billing: null
+  billing_granularity: null
+  estimated_upper_bound_spend: null
+  budget_cap: null
+  quota_confirmed: null
+  idle_timeout_minutes: null
+  emergency_termination_procedure: null
+  deletion_procedure: null
+  actual_charges: null
+
+execution_controls:
+  # Decided and fixed.
+  use_prompt_extend: false # no image -> VLM -> text route; no remote (e.g. dashscope) expansion
+  clip_conditioning: original
+  vae_first_frame_conditioning: original
+  identity_adapters: none
+  remote_inference_services: none
+  prompt_policy: neutral_motion_only
+  output_storage: private_only
+  # Pending: not decided, so null. Upstream defaults in Research 005 are not adopted here.
+  prompt_template_version: null
+  seeds: null
+  sampler: null
+  sampling_steps: null
+  guidance_scale: null
+  frame_count: null
+  resolution: null
+  precision: null
+  frame_indices: null
+  image_preprocessing_version: null
