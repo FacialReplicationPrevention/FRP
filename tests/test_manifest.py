@@ -181,6 +181,38 @@ def test_number_of_identities_must_match_list(manifest_data):
     assert "number_of_identities is 5 but 2 identities are listed" in _problems(manifest_data)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("upstream_repository", "Wan-Video/Wan2.2"),
+        ("upstream_repository", "Example-Org/Wan2.1-fork"),
+        ("checkpoint", "Wan-AI/Wan2.2-I2V-A14B"),
+        ("checkpoint", "Wan-AI/Wan2.2-TI2V-5B"),
+        ("checkpoint", "Wan-AI/Wan2.1-I2V-14B-720P"),
+        ("checkpoint", "city96/Wan2.1-I2V-14B-480P-gguf"),
+    ],
+)
+def test_non_wan21_source_or_checkpoint_fails_closed(manifest_data, field, value):
+    manifest_data[field] = value
+    problems = _problems(manifest_data)
+    assert f"{field}: schema 1.0 plans the Wan 2.1 I2V A/B/C/D protocol only" in problems
+    assert value not in problems
+
+
+def test_wan22_manifest_is_rejected_on_both_fields(manifest_data):
+    manifest_data["upstream_repository"] = "Wan-Video/Wan2.2"
+    manifest_data["checkpoint"] = "Wan-AI/Wan2.2-I2V-A14B"
+    problems = _problems(manifest_data)
+    assert "upstream_repository: schema 1.0 plans the Wan 2.1 I2V A/B/C/D protocol only" in problems
+    assert "checkpoint: schema 1.0 plans the Wan 2.1 I2V A/B/C/D protocol only" in problems
+
+
+def test_wan21_identifiers_are_case_insensitive(manifest_data):
+    manifest_data["upstream_repository"] = "wan-video/wan2.1"
+    manifest_data["checkpoint"] = "wan-ai/wan2.1-i2v-14b-480p"
+    parse_manifest(manifest_data)
+
+
 def test_frame_indices_must_fit_frame_count(ready_manifest_data):
     ready_manifest_data["frame_indices"] = [0, 81]
     assert "frame_indices must be < frame_count (81)" in _problems(ready_manifest_data)

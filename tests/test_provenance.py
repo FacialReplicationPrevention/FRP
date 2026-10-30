@@ -16,12 +16,15 @@ import pytest
 import yaml
 
 from frp.cli import EXIT_INVALID, EXIT_OK, EXIT_USAGE, main
+from frp.manifest import WAN21_I2V_CHECKPOINTS, WAN21_SOURCE_REPOSITORY
 from frp.provenance import (
     MAX_PROVENANCE_BYTES,
     NOTICE,
     PROTOCOL_SCOPES,
+    Permalink,
     ProvenanceError,
     load_provenance,
+    parse_permalink,
     parse_provenance,
     parse_provenance_text,
     pending_claims,
@@ -167,6 +170,12 @@ def test_protocol_scope_matches_result_protocol_table():
         assert scope.model_family == PROTOCOL_MODEL_FAMILY[protocol]
 
 
+def test_protocol_scope_matches_manifest_guard():
+    scope = PROTOCOL_SCOPES[PROTOCOL]
+    assert scope.source_repository == WAN21_SOURCE_REPOSITORY.casefold()
+    assert scope.checkpoint_repositories == {c.casefold() for c in WAN21_I2V_CHECKPOINTS}
+
+
 def test_synthetic_inventory_is_valid(inventory_data):
     inventory = parse_provenance(inventory_data)
     assert [c.candidate_id for c in inventory.candidates] == [
@@ -264,12 +273,111 @@ def test_commit_without_source_repository_is_rejected(inventory_data):
     assert "source_commit: a commit requires source_repository" in _problems(inventory_data)
 
 
+WRONG = "9" * 40
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://github.com/Wan-Video/Wan2.1/blob/{WRONG}/wan/image2video.py?rev={SRC_21}",
+        f"https://github.com/Wan-Video/Wan2.1/tree/{WRONG}#{SRC_21}",
+        f"https://github.com/Wan-Video/Wan2.1/blob/{WRONG}/{SRC_21}/README.md",
+        f"https://github.com/Other-Org/Wan2.1/tree/{SRC_21}",
+        f"https://github.com/Wan-Video/Wan2.1-fork/tree/{SRC_21}",
+        f"https://huggingface.co/Wan-Video/Wan2.1/tree/{SRC_21}",
+    ],
+)
+def test_verified_commit_requires_exact_revision_and_repository(inventory_data, url):
+    inventory_data["candidates"][0]["source_commit"]["evidence"] = [url]
+    problems = _problems(inventory_data)
+    assert "source_commit: verified commit must cite a GitHub link to source_repository" in problems
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/tree/{WRONG}?rev={REV_21}",
+        f"https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/resolve/{WRONG}/x#{REV_21}",
+        f"https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-720P/tree/{REV_21}",
+        f"https://github.com/Wan-AI/Wan2.1-I2V-14B-480P/tree/{REV_21}",
+    ],
+)
+def test_verified_revision_requires_exact_revision_and_repository(inventory_data, url):
+    inventory_data["candidates"][0]["checkpoint_revision"]["evidence"] = [url]
+    problems = _problems(inventory_data)
+    assert "checkpoint_revision: verified revision must cite a Hugging Face link" in problems
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://github.com/Wan-Video/Wan2.1/blob/main/LICENSE.txt?x=/blob/{SRC_21}/",
+        f"https://github.com/Wan-Video/Wan2.1/blob/main/LICENSE.txt#/tree/{SRC_21}",
+        f"https://github.com/Wan-Video/Wan2.1/blob/{SRC_21}0/LICENSE.txt",
+    ],
+)
+def test_revision_only_counts_as_pinned_in_the_url_path(inventory_data, url):
+    inventory_data["candidates"][0]["licence"]["evidence"] = [url]
+    assert "verified evidence must be pinned to a 40-hex revision" in _problems(inventory_data)
+
+
+def test_repository_case_in_permalink_is_ignored(inventory_data):
+    inventory_data["candidates"][0]["source_commit"]["evidence"] = [
+        f"https://github.com/wan-video/WAN2.1/tree/{SRC_21}"
+    ]
+    parse_provenance(inventory_data)
+
+
+def test_parse_permalink():
+    assert parse_permalink(f"{GH_21}/wan/image2video.py?plain=1#L1-L2") == Permalink(
+        host="github.com",
+        repository="wan-video/wan2.1",
+        kind="blob",
+        revision=SRC_21,
+        path="wan/image2video.py",
+    )
+    assert parse_permalink(f"https://huggingface.co/A/b/tree/{REV_21}") == Permalink(
+        "huggingface.co", "a/b", "tree", REV_21, ""
+    )
+    for url in (
+        f"https://github.com/A/b/blob/main/x?ref={SRC_21}",
+        f"https://github.com/A/b/{SRC_21}",
+        f"https://github.com/A/b/blob/{'AB' * 20}/x",
+        f"https://arxiv.org/abs/{SRC_21}",
+    ):
+        assert parse_permalink(url) is None
+
+
 def test_verified_conditioning_requires_evidence_at_pinned_commit(inventory_data):
     inventory_data["candidates"][1]["conditioning"]["evidence"] = [
         f"https://github.com/Wan-Video/Wan2.2/blob/{'5' * 40}/wan/image2video.py#L3"
     ]
     problems = _problems(inventory_data)
     assert "conditioning: verified evidence must be source files at the pinned" in problems
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://github.com/Wan-Video/Wan2.2/blob/{WRONG}/wan/image2video.py?rev={SRC_22}",
+        f"https://github.com/Other-Org/Wan2.2/blob/{SRC_22}/wan/image2video.py",
+        f"https://github.com/Wan-Video/Wan2.2/tree/{SRC_22}/wan",
+        f"https://github.com/Wan-Video/Wan2.2/blob/{SRC_22}",
+        f"https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/blob/{WRONG}/config.json?r={REV_22}",
+        f"https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/{REV_22}/config.json",
+    ],
+)
+def test_conditioning_evidence_requires_exact_pinned_file(inventory_data, url):
+    inventory_data["candidates"][1]["conditioning"]["evidence"] = [url]
+    problems = _problems(inventory_data)
+    assert "conditioning: verified evidence must be source files at the pinned" in problems
+
+
+def test_conditioning_evidence_may_cite_pinned_checkpoint_file(inventory_data):
+    inventory_data["candidates"][1]["conditioning"]["evidence"].append(
+        f"https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/resolve/{REV_22}/low_noise_model/config.json"
+    )
+    parse_provenance(inventory_data)
 
 
 def test_verified_conditioning_requires_verified_source_commit(inventory_data):

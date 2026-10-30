@@ -77,7 +77,7 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 - [x] Pin the Wan 2.1 upstream commit (`9737cba…`) and the `Wan2.1-I2V-14B-480P` Hub revision (`6b73f84…`); statically re-verify the CLIP and VAE first-frame conditioning paths at that revision ([Research 005](research/005-wan-model-candidates.md)).
 - [ ] Checkpoint weight hashes. **Not verified:** requires an approved download and local hashing.
 - [x] Inventory candidate open-weight models (Wan 2.2 I2V-A14B and TI2V-5B, other official Wan checkpoints, selected derivatives) with pinned revisions, provenance, licence metadata, conditioning paths and cited resource statements; unverifiable items are marked as such.
-- [x] Add a machine-readable provenance inventory ([`provenance/model-candidates.yaml`](provenance/model-candidates.yaml)) and an offline validator (`frp provenance`) that refuses to apply the Wan 2.1 protocol to other architectures.
+- [x] Add a machine-readable provenance inventory ([`provenance/model-candidates.yaml`](provenance/model-candidates.yaml)) and an offline validator (`frp provenance`) that refuses to apply the Wan 2.1 protocol to other architectures; `frp plan` / `frp simulate` also fail closed on manifests naming a source or checkpoint other than the reviewed Wan 2.1 I2V-14B-480P.
 - [x] Recommend an initial reproducible baseline (Wan2.1-I2V-14B-480P) and an optional later candidate (Wan2.2-I2V-A14B). A recommendation, not an authorisation to execute.
 - [ ] Only if source verification supports it, draft a separate protocol for another model. Research 005 shows the Wan 2.1 A/B/C/D design does **not** transfer to Wan 2.2 I2V-A14B (no CLIP path); no Wan 2.2 protocol has been proposed.
 - [ ] Human review of licence terms and permitted research use.
@@ -88,6 +88,7 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 - [ ] Confirm model/checkpoint licence and permitted research use.
 - [ ] Approve a GPU-provider budget, quota and shutdown policy; record an actual quote rather than estimate it as fact.
 - [ ] Pin upstream source, model hashes, dependencies and reproducible container image.
+- [ ] Lock upstream prompt extension off (`use_prompt_extend: false`) among the recorded generation controls, so a vision-language model cannot add an uncontrolled image → text route ([Research 005](research/005-wan-model-candidates.md); requested in the Milestone 003 review).
 - [ ] Prepare a private, permission-verified adult dataset and ethical handling/retention procedure.
 - [ ] Instrument CLIP feature and VAE condition metadata (shape/dtype/device), not raw biometric information in shared logs.
 - [ ] Verify positive- and negative-text passes use the intended paired image conditions.

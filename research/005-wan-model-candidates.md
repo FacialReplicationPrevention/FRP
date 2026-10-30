@@ -208,7 +208,7 @@ These are separate properties and must not be conflated:
 
 ## Machine-readable inventory and protocol guard
 
-[`provenance/model-candidates.yaml`](../provenance/model-candidates.yaml) records every candidate above with explicit `verified` / `pending` / `not_verified` / `unknown` statuses and pinned evidence links. `frp provenance` validates it offline and rejects, among other things: `verified` claims without pinned evidence, verified conditioning evidence not at the pinned commit, any `verified` weight digest, duplicate candidates, and declaring `wan2.1-i2v-clip-vae-2x2` on anything other than the official Wan2.1-I2V-14B-480P checkpoint with verified CLIP and VAE paths. Validation proves internal consistency only; the links must be reviewed by a person.
+[`provenance/model-candidates.yaml`](../provenance/model-candidates.yaml) records every candidate above with explicit `verified` / `pending` / `not_verified` / `unknown` statuses and pinned evidence links. `frp provenance` validates it offline and rejects, among other things: `verified` claims without pinned evidence, evidence whose path revision or repository differs from the claimed one (a matching SHA in a query string does not count), verified conditioning evidence not at the pinned commit, any `verified` weight digest, duplicate candidates, and declaring `wan2.1-i2v-clip-vae-2x2` on anything other than the official Wan2.1-I2V-14B-480P checkpoint with verified CLIP and VAE paths. Independently, the Wan 2.1 experiment manifest fails closed: `frp plan` and `frp simulate` reject a manifest naming any source other than `Wan-Video/Wan2.1` or any checkpoint other than `Wan-AI/Wan2.1-I2V-14B-480P`. Validation proves internal consistency only; the links must be reviewed by a person.
 
 ## Sources
 

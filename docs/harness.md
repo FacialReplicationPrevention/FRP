@@ -101,6 +101,13 @@ Wan's `W*H` form (e.g. `832*480`); `number_of_identities`, if set, equals the id
 
 Fixed values: `consent_record_location: private_only` and `image_count_per_identity: 1`.
 
+**Wan 2.1-only guard.** Schema 1.0 plans the Wan 2.1 I2V CLIP × VAE protocol only, so it fails
+closed on any other model: `upstream_repository` must be `Wan-Video/Wan2.1` and `checkpoint`
+must be `Wan-AI/Wan2.1-I2V-14B-480P` (case-insensitive). A manifest naming Wan 2.2 or another
+checkpoint is rejected by `frp plan` and `frp simulate` with exit code 1 and no plan. The allowed
+values are `WAN21_SOURCE_REPOSITORY` and `WAN21_I2V_CHECKPOINTS` in `frp.manifest`, which also
+define the provenance protocol scope; widening them needs scientific review.
+
 ### Strictness
 
 Unknown keys, duplicate YAML keys, custom YAML tags, multi-document files, type coercion
@@ -388,12 +395,18 @@ rejected.
 
 Cross-field rules:
 
-- A verified `source_commit` must cite a GitHub link to `source_repository` containing that SHA;
-  a verified `checkpoint_revision` must cite a Hugging Face link to `checkpoint_repository`
-  containing that revision. A commit without a `source_repository` is rejected.
+- Evidence URLs are parsed, not substring-matched: a pinned link has the form
+  `https://<github.com|huggingface.co>/<owner>/<repo>/<blob|tree|commit|resolve>/<40-hex>[/path]`,
+  and only the revision in that path position counts. A SHA in a query string, fragment or later
+  path segment is ignored, so a link pinned to a different commit cannot pass.
+- A verified `source_commit` must cite a GitHub link whose repository equals `source_repository`
+  and whose path revision equals the commit; a verified `checkpoint_revision` must cite a Hugging
+  Face link whose repository equals `checkpoint_repository` and whose path revision equals that
+  revision. Repository names compare case-insensitively. A commit without a
+  `source_repository` is rejected.
 - Verified `conditioning` requires a verified `source_commit`, and every evidence link must be a
-  source file at that commit (`github.com/<repo>/blob/<sha>/…`) or a checkpoint file at the
-  verified revision.
+  source file at exactly that commit (`github.com/<repo>/blob/<sha>/<file>`) or a checkpoint file
+  (`blob` or `resolve`) at exactly the verified revision.
 - `weight_sha256` can **never** be `verified` in schema 1.0: digests must be checked against
   approved local downloads, a later gated step. Platform-reported digests may be `pending`.
 - **Protocol guard.** The only supported protocol is `wan2.1-i2v-clip-vae-2x2`. It may be
@@ -434,10 +447,10 @@ statuses.
   families need their own reviewed protocol.
 - `frp provenance` checks consistency, not truth: it cannot tell whether a pinned link actually
   shows what a claim says, and it does not re-query upstream repositories.
-- `frp plan` and `frp simulate` do not yet cross-check the manifest's `upstream_repository` and
-  `checkpoint` against the provenance inventory, so a manifest naming another model would still
-  plan the Wan 2.1 A/B/C/D design. Adding that check would change Milestone 001/002 behaviour
-  and is proposed for review rather than implemented.
+- The manifest guard compares `upstream_repository` and `checkpoint` identifiers only; it does
+  not consult the provenance inventory and cannot confirm that a future executor loads that
+  source or checkpoint. Prompt extension (`--use_prompt_extend`) is not yet a locked manifest
+  control.
 - Dependency lower bounds in `pyproject.toml` are untested; only `constraints.txt` pins are
   tested in CI.
 

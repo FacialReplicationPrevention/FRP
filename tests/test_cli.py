@@ -100,6 +100,27 @@ def test_missing_manifest_file(capsys, tmp_path):
     assert "file not found" in err
 
 
+def test_wan22_manifest_cannot_be_planned_or_simulated(
+    capsys, manifest_data, write_manifest, tmp_path
+):
+    manifest_data["upstream_repository"] = "Wan-Video/Wan2.2"
+    manifest_data["checkpoint"] = "Wan-AI/Wan2.2-I2V-A14B"
+    path = str(write_manifest(manifest_data))
+    report_dir = tmp_path / "reports"
+    for argv in (
+        ("plan", path, "--dry-run"),
+        ("plan", path, "--dry-run", "--format", "json"),
+        ("simulate", path, "--report-dir", str(report_dir)),
+    ):
+        code, out, err = _run(capsys, *argv)
+        assert code == EXIT_INVALID
+        assert out == ""
+        assert "frp: invalid manifest:" in err
+        assert "plans the Wan 2.1 I2V A/B/C/D protocol only" in err
+        assert "Wan2.2" not in err
+    assert not report_dir.exists()
+
+
 def test_require_ready(capsys, ready_manifest_data, write_manifest):
     code, _, err = _run(capsys, "plan", str(EXAMPLE_MANIFEST), "--dry-run", "--require-ready")
     assert code == EXIT_NOT_READY

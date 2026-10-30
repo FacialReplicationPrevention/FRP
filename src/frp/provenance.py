@@ -38,6 +38,8 @@ from pydantic import (
 
 from frp.manifest import (
     _YAML_ERROR_DESCRIPTIONS,
+    WAN21_I2V_CHECKPOINTS,
+    WAN21_SOURCE_REPOSITORY,
     GitSha,
     Sha256Hex,
     _duplicate_positions,
@@ -85,10 +87,9 @@ ModelFamily = Annotated[
     StringConstraints(pattern=r"^[a-z0-9][a-z0-9.+-]{1,63}$"),
     AfterValidator(_reject_placeholder),
 ]
-RepoId = Annotated[
-    str,
-    StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"),
-]
+_REPO_PATTERN: Final = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}"
+
+RepoId = Annotated[str, StringConstraints(pattern=rf"^{_REPO_PATTERN}$")]
 InventoryId = Annotated[str, StringConstraints(pattern=r"^[A-Z0-9][A-Z0-9-]{2,63}$")]
 LicenceId = Annotated[
     str,
@@ -110,12 +111,61 @@ EvidenceUrl = Annotated[
     StringConstraints(pattern=r"^https://(?:github\.com|huggingface\.co|arxiv\.org)/\S{1,400}$"),
 ]
 
-_PINNED_RE: Final = re.compile(r"/(?:blob|tree|commit|resolve)/([0-9a-f]{40})(?:[/#?]|$)")
+# The revision must be the path segment right after the repository, never a query or fragment.
+_PERMALINK_RE: Final = re.compile(
+    rf"^https://(?P<host>github\.com|huggingface\.co)/(?P<repository>{_REPO_PATTERN})/"
+    r"(?P<kind>blob|tree|commit|resolve)/(?P<revision>[0-9a-f]{40})"
+    r"(?P<path>/[^?#]*)?(?:[?#]\S*)?$"
+)
 _ARXIV_VERSIONED_RE: Final = re.compile(r"^https://arxiv\.org/abs/[0-9]{4}\.[0-9]{4,5}v[0-9]+$")
+_SOURCE_FILE: Final = frozenset({"blob"})
+_HUB_FILE: Final = frozenset({"blob", "resolve"})
+
+
+class Permalink(NamedTuple):
+    host: str
+    repository: str
+    kind: str
+    revision: str
+    path: str
+
+
+def parse_permalink(url: str) -> Permalink | None:
+    """Split a GitHub/Hugging Face URL pinned to a 40-hex revision; ``None`` if not pinned."""
+    match = _PERMALINK_RE.match(url)
+    if match is None:
+        return None
+    return Permalink(
+        host=match["host"],
+        repository=match["repository"].casefold(),
+        kind=match["kind"],
+        revision=match["revision"],
+        path=(match["path"] or "").strip("/"),
+    )
 
 
 def _is_pinned(url: str) -> bool:
-    return _ARXIV_VERSIONED_RE.match(url) is not None or _PINNED_RE.search(url) is not None
+    return _ARXIV_VERSIONED_RE.match(url) is not None or parse_permalink(url) is not None
+
+
+def _cites(
+    url: str,
+    host: str,
+    repository: str,
+    revision: str,
+    kinds: frozenset[str] | None = None,
+    *,
+    file_required: bool = False,
+) -> bool:
+    link = parse_permalink(url)
+    return (
+        link is not None
+        and link.host == host
+        and link.repository == repository.casefold()
+        and link.revision == revision
+        and (kinds is None or link.kind in kinds)
+        and (bool(link.path) or not file_required)
+    )
 
 
 class ProtocolScope(NamedTuple):
@@ -133,8 +183,8 @@ PROTOCOL_SCOPES: Final = MappingProxyType(
     {
         PROTOCOL_WAN21_I2V_CLIP_VAE_2X2: ProtocolScope(
             model_family=PROTOCOL_MODEL_FAMILY[PROTOCOL_WAN21_I2V_CLIP_VAE_2X2],
-            source_repository="wan-video/wan2.1",
-            checkpoint_repositories=frozenset({"wan-ai/wan2.1-i2v-14b-480p"}),
+            source_repository=WAN21_SOURCE_REPOSITORY.casefold(),
+            checkpoint_repositories=frozenset(c.casefold() for c in WAN21_I2V_CHECKPOINTS),
             required_conditioning=frozenset({"clip_vision", "vae_first_frame_concat"}),
         )
     }
@@ -188,14 +238,6 @@ class Claim(BaseModel, Generic[T]):
         return self
 
 
-def _evidence_cites(claim: Claim[Any], prefix: str, revision: str) -> bool:
-    prefix = prefix.casefold()
-    return any(
-        url.casefold().startswith(prefix) and revision in url.split("#", 1)[0]
-        for url in claim.evidence
-    )
-
-
 class ModelCandidate(BaseModel):
     """Provenance record of one model checkpoint considered by FRP."""
 
@@ -236,10 +278,10 @@ class ModelCandidate(BaseModel):
                 "checked against approved local downloads, a later gated step (use pending for "
                 "platform-reported digests)"
             )
-        if self.checkpoint_revision.status == "verified" and not _evidence_cites(
-            self.checkpoint_revision,
-            f"https://huggingface.co/{self.checkpoint_repository}/",
-            self.checkpoint_revision.value or "",
+        revision = self.checkpoint_revision
+        if revision.status == "verified" and not any(
+            _cites(url, "huggingface.co", self.checkpoint_repository, revision.value or "")
+            for url in revision.evidence
         ):
             problems.append(
                 "checkpoint_revision: verified revision must cite a Hugging Face link to "
@@ -267,8 +309,9 @@ class ModelCandidate(BaseModel):
             if commit.value is not None:
                 return ["source_commit: a commit requires source_repository"]
             return []
-        if commit.status == "verified" and not _evidence_cites(
-            commit, f"https://github.com/{self.source_repository}/", commit.value or ""
+        if commit.status == "verified" and not any(
+            _cites(url, "github.com", self.source_repository, commit.value or "")
+            for url in commit.evidence
         ):
             return [
                 "source_commit: verified commit must cite a GitHub link to source_repository "
@@ -281,23 +324,20 @@ class ModelCandidate(BaseModel):
             return []
         if self.source_repository is None or self.source_commit.status != "verified":
             return ["conditioning: verified conditioning requires a verified source_commit"]
-        allowed = [
-            f"https://github.com/{self.source_repository}/blob/{self.source_commit.value}/",
-        ]
-        if self.checkpoint_revision.status == "verified":
-            allowed.append(
-                f"https://huggingface.co/{self.checkpoint_repository}/"
-                f"resolve/{self.checkpoint_revision.value}/"
-            )
-            allowed.append(
-                f"https://huggingface.co/{self.checkpoint_repository}/"
-                f"blob/{self.checkpoint_revision.value}/"
-            )
-        allowed = [prefix.casefold() for prefix in allowed]
+        source = (self.source_repository, self.source_commit.value or "")
+        checkpoint = (
+            (self.checkpoint_repository, self.checkpoint_revision.value or "")
+            if self.checkpoint_revision.status == "verified"
+            else None
+        )
         stray = [
             str(i)
             for i, url in enumerate(self.conditioning.evidence)
-            if not url.casefold().startswith(tuple(allowed))
+            if not _cites(url, "github.com", *source, _SOURCE_FILE, file_required=True)
+            and not (
+                checkpoint is not None
+                and _cites(url, "huggingface.co", *checkpoint, _HUB_FILE, file_required=True)
+            )
         ]
         if stray:
             return [
