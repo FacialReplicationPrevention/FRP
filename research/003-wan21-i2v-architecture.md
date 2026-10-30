@@ -4,6 +4,8 @@
 **Status:** Source-code analysis; intervention hypotheses untested  
 **Target:** Official Wan2.1 I2V inference, not Wan2.2, VACE or third-party ComfyUI variants.
 
+> **Scope and pinned re-check (2026-10-30).** All conclusions in this note are **Wan 2.1 I2V-specific** and must not be generalised to other models: Wan 2.2 I2V-A14B, for example, has no CLIP-vision path ([Research 005](005-wan-model-candidates.md#2-wan-22-i2v-a14b-at-1ea34ff-verified-independently)). The trace was re-checked at pinned commit `9737cba9c1c3c4d04b33fcad41c111989865d315`. Its substantive statements hold, but the approximate line numbers below refer to an unrecorded `main` revision and are superseded by the pinned permalinks and [correction table in Research 005](005-wan-model-candidates.md#corrections-to-research-003-line-references). The body of this note is otherwise unchanged.
+
 ## Research question
 
 Where does a reference photograph influence Wan2.1 video generation, and which points are candidates for measuring or reducing identity retention?

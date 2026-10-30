@@ -1,10 +1,13 @@
-# FRP CPU-only harness — manifest, A/B/C/D planner and simulated pipeline
+# FRP CPU-only harness — manifest, A/B/C/D planner, simulated pipeline and provenance validator
 
-**Status:** Phase 2. Milestone 001 (manifest schema and dry-run planner,
-[issue #1](https://github.com/FacialReplicationPrevention/FRP/issues/1), merged in
-[PR #2](https://github.com/FacialReplicationPrevention/FRP/pull/2)) and Milestone 002
-(simulated execution, evaluation and reporting,
-[issue #5](https://github.com/FacialReplicationPrevention/FRP/issues/5), under review).
+**Status:** Phase 2 Milestones 001 (manifest schema and dry-run planner,
+[issue #1](https://github.com/FacialReplicationPrevention/FRP/issues/1),
+[PR #2](https://github.com/FacialReplicationPrevention/FRP/pull/2)) and 002 (simulated
+execution, evaluation and reporting,
+[issue #5](https://github.com/FacialReplicationPrevention/FRP/issues/5),
+[PR #6](https://github.com/FacialReplicationPrevention/FRP/pull/6)) are merged. Phase 2b
+Milestone 003 (model provenance inventory and offline validator,
+[issue #7](https://github.com/FacialReplicationPrevention/FRP/issues/7)) is under review.
 
 **No real inference or measurement.** The harness loads no model, runs no inference, reads no
 images, computes no embeddings and has **measured no scientific outcome**. A valid manifest,
@@ -15,7 +18,10 @@ identity. Simulated reports test software contracts only.
 fixed A/B/C/D mapping, run plan, result protocol id (`wan2.1-i2v-clip-vae-2x2`) and simulated
 executor model family (`wan2.1-i2v`) model the **Wan 2.1 I2V** CLIP/VAE ablation hypothesis
 only. Nothing here implies support for Wan 2.2 or any other model; another model family needs
-its own source-verified, reviewed protocol.
+its own source-verified, reviewed protocol. [Research 005](../research/005-wan-model-candidates.md)
+found that Wan 2.2 I2V-A14B has no CLIP-vision path at its pinned commit, and the provenance
+validator rejects declaring the Wan 2.1 protocol for it (see
+[below](#model-provenance-inventory-milestone-003)).
 
 ## What it does
 
@@ -26,6 +32,7 @@ its own source-verified, reviewed protocol.
 4. Runs the plan through **simulated** executor and evaluator adapters, validates the result
    records against the plan, aggregates them identity-first and writes aggregate-only
    Markdown/CSV reports (`frp simulate …`).
+5. Validates the model-candidate provenance inventory offline (`frp provenance …`).
 
 | Module | Responsibility |
 | --- | --- |
@@ -38,7 +45,8 @@ its own source-verified, reviewed protocol.
 | [`frp.simulation`](../src/frp/simulation.py) | Deterministic synthetic executor/evaluators and scenarios |
 | [`frp.aggregation`](../src/frp/aggregation.py) | Frame → clip → identity → variant summaries and paired contrasts |
 | [`frp.reporting`](../src/frp/reporting.py) | Aggregate-only Markdown and CSV reports (report schema `1.0`) |
-| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR` |
+| [`frp.provenance`](../src/frp/provenance.py) | Provenance schema `1.0`, claim status rules, protocol scope guard |
+| [`frp.cli`](../src/frp/cli.py) | `frp plan MANIFEST --dry-run`, `frp simulate MANIFEST --report-dir DIR`, `frp provenance INVENTORY` |
 
 ## Reproducible local commands
 
@@ -51,6 +59,7 @@ ruff format --check .
 pytest -q
 frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
 frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
+frp provenance provenance/model-candidates.yaml
 ~~~
 
 `runs/` is git-ignored. `frp simulate` refuses to replace existing report files unless
@@ -128,10 +137,10 @@ replaced by fixed descriptions.
   identified by a SHA-256 content hash.
 - Run ids (`<experiment_id>-G0001-A`) contain no pseudonym, prompt text or seed.
 
-Exit codes: `0` success, `1` invalid manifest/plan (or, for `simulate`, invalid results),
-`2` usage error (including omitting `--dry-run` for `plan`), `3` not ready (only with
-`--require-ready`), `4` report files could not be written (including existing files without
-`--overwrite`).
+Exit codes: `0` success, `1` invalid manifest/plan (or, for `simulate`, invalid results; for
+`provenance`, an invalid inventory), `2` usage error (including omitting `--dry-run` for
+`plan`), `3` not ready (only with `--require-ready`), `4` report files could not be written
+(including existing files without `--overwrite`).
 
 ## Simulated pipeline (Milestone 002)
 
@@ -326,14 +335,84 @@ These are implementation choices, not protocol changes. Each needs scientific re
 4. **One reference image per identity** (`image_count_per_identity` fixed at `1`), matching the
    pilot description.
 5. **Seed range** `[0, 2**32 - 1]`. Negative seeds are rejected because upstream Wan2.1
-   replaces `seed < 0` with a random seed (`wan/image2video.py`, observed at upstream `main`
-   commit `9737cba`; re-check at the pinned revision). The upper bound is a conservative
-   FRP portability choice, not an upstream limit.
+   replaces `seed < 0` with a random seed (`wan/image2video.py` L199 and `generate.py` L91,
+   re-checked at pinned commit `9737cba9c1c3c4d04b33fcad41c111989865d315`). The upper bound is
+   a conservative FRP portability choice, not an upstream limit.
 6. **`frame_count` must be 4n+1**, following the `--frame_num` help text in upstream
-   `generate.py` (same commit, to be re-checked at the pinned revision).
+   `generate.py` (L117–L120 at the same pinned commit).
 7. **Negative-prompt text is not a separate field.** Research 004 requires identical
    positive/negative prompts across A–D; schema 1.0 relies on `prompt_template_version` for
    this. A dedicated field may be warranted.
+
+## Model provenance inventory (Milestone 003)
+
+`frp provenance INVENTORY [--format text|json]` validates a provenance inventory such as
+[`provenance/model-candidates.yaml`](../provenance/model-candidates.yaml) and prints a summary.
+It is **static and offline**: it never fetches source code, metadata or weights, imports no ML
+packages, and does not re-verify upstream facts. A valid inventory is internally consistent;
+whether each evidence link really supports its claim must be reviewed by a person. The research
+behind the committed inventory is in [Research 005](../research/005-wan-model-candidates.md).
+
+### Provenance schema 1.0 (`frp.provenance`)
+
+Top level: `provenance_schema_version: "1.0"`, `inventory_id`, `reviewed_on` (ISO date) and a
+non-empty list of `candidates`. Each candidate has:
+
+| Field | Rules |
+| --- | --- |
+| `candidate_id` | Lower-case id; unique (case-insensitive) |
+| `model_family` | Lower-case id, e.g. `wan2.1-i2v`, `wan2.2-i2v` |
+| `task` | `image-to-video`, `text-image-to-video`, `character-animation` or `speech-to-video` |
+| `provenance` | `official`, `official-conversion` or `derivative` |
+| `frp_role` | `initial-baseline` (at most one), `later-candidate` or `inventory-only` |
+| `source_repository` | GitHub `owner/name`, or `null` if unknown |
+| `checkpoint_repository` | Hub `owner/name`; unique (case-insensitive) |
+| `source_commit`, `checkpoint_revision` | Claims whose value is a full 40-hex SHA |
+| `weight_sha256` | Claim whose value maps relative file names to 64-hex SHA-256 digests |
+| `licence` | Claim whose value is a licence identifier such as `Apache-2.0` |
+| `conditioning` | Claim whose value lists observed paths: `text_t5`, `clip_vision`, `vae_first_frame_concat`, `first_frame_latent_replacement`, `optional_vlm_prompt_extension` |
+| `derived_from` | Claim naming the base checkpoint; required for, and only for, non-official provenance |
+| `protocols` | Reviewed protocol ids that may be applied (usually empty) |
+| `execution_readiness` | Must be `not_ready`: schema 1.0 cannot mark anything ready to run |
+
+A **claim** is `{value, status, evidence}`. Evidence links must be `https://` URLs on
+`github.com`, `huggingface.co` or `arxiv.org`, so local paths and private storage locations are
+rejected.
+
+| Status | Value | Evidence |
+| --- | --- | --- |
+| `verified` | Required | At least one; every link pinned to a 40-hex revision (`/blob/`, `/tree/`, `/commit/` or `/resolve/`) or a versioned arXiv abstract. Moving links such as `/blob/main/` are rejected |
+| `pending` | Required | Optional (credible source, FRP check or human review incomplete) |
+| `not_verified` | Must be `null` | Optional (not yet checkable) |
+| `unknown` | Must be `null` | Optional (not determinable) |
+
+Cross-field rules:
+
+- A verified `source_commit` must cite a GitHub link to `source_repository` containing that SHA;
+  a verified `checkpoint_revision` must cite a Hugging Face link to `checkpoint_repository`
+  containing that revision. A commit without a `source_repository` is rejected.
+- Verified `conditioning` requires a verified `source_commit`, and every evidence link must be a
+  source file at that commit (`github.com/<repo>/blob/<sha>/…`) or a checkpoint file at the
+  verified revision.
+- `weight_sha256` can **never** be `verified` in schema 1.0: digests must be checked against
+  approved local downloads, a later gated step. Platform-reported digests may be `pending`.
+- **Protocol guard.** The only supported protocol is `wan2.1-i2v-clip-vae-2x2`. It may be
+  declared only for model family `wan2.1-i2v`, source `Wan-Video/Wan2.1`, checkpoint
+  `Wan-AI/Wan2.1-I2V-14B-480P`, `official` provenance, a verified source commit and verified
+  conditioning that includes both `clip_vision` and `vae_first_frame_concat`. Relabelling a
+  Wan 2.2 candidate's `model_family` does not bypass the source, checkpoint and conditioning
+  checks. Unknown protocol ids are rejected without echoing them. Widening this scope (e.g. to
+  the 720P checkpoint) requires scientific review.
+- Placeholder text (`TODO`, `TBD`, `unknown`, …) is rejected in identifiers and licence values.
+
+Strictness and error safety follow the manifest: unknown keys, duplicate YAML keys, custom tags,
+multi-document files and type coercion are rejected, and errors report schema paths and rules
+but never input values or user-supplied key names.
+
+Text output lists each candidate's provenance, role, source commit, conditioning status and
+protocols, then every claim that is not `verified`, and states that every candidate is
+**NOT READY** for execution. `--format json` emits the same summary with claim values and
+statuses.
 
 ## Known limitations
 
@@ -353,6 +432,12 @@ These are implementation choices, not protocol changes. Each needs scientific re
 - `--require-ready` checks presence and format, not correctness of hashes, licences or consent.
 - The executor contract and result protocol are Wan 2.1 A/B/C/D specific; other model
   families need their own reviewed protocol.
+- `frp provenance` checks consistency, not truth: it cannot tell whether a pinned link actually
+  shows what a claim says, and it does not re-query upstream repositories.
+- `frp plan` and `frp simulate` do not yet cross-check the manifest's `upstream_repository` and
+  `checkpoint` against the provenance inventory, so a manifest naming another model would still
+  plan the Wan 2.1 A/B/C/D design. Adding that check would change Milestone 001/002 behaviour
+  and is proposed for review rather than implemented.
 - Dependency lower bounds in `pyproject.toml` are untested; only `constraints.txt` pins are
   tested in CI.
 
