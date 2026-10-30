@@ -95,6 +95,10 @@ class ReadinessError(Exception):
         super().__init__("; ".join(self.problems))
 
 
+class ProvenanceMismatchError(ReadinessError):
+    """The record's pins do not agree with the provenance inventory it was checked against."""
+
+
 class Target(BaseModel):
     """The one reviewed target. Wan 2.1 only: other models need their own reviewed protocol."""
 

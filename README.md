@@ -69,7 +69,7 @@ This A/B/C/D design is specific to Wan 2.1 I2V. A static review of **Wan 2.2 I2V
 | [Experiment 002 — Conditioning pathway ablation](experiments/002-conditioning-ablation-protocol.md) | Test paired A/B/C/D alterations while measuring identity **and** utility |
 | [Experiment 003 — Wan 2.1 I2V single-condition baseline (design only)](experiments/003-wan21-i2v-baseline-design.md) | Unaltered baseline contract: smoke, calibration and baseline roles; separate from A/B/C/D |
 
-Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is the current milestone. Its first PR is **preparation only**: a [GPU readiness protocol](docs/gpu-readiness.md) with seven separate human approvals, the baseline design above, and a [private visual-review specification](docs/private-review-viewer.md). None of the gates has been approved, and no GPU, inference or evaluation has run.
+Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is the current milestone. Its first PR (merged) was **preparation only**, and its second adds CPU-only baseline contracts and a mock-tested, fail-closed executor boundary with the live backend disabled (`frp baseline-plan`, see the [harness guide](docs/harness.md#wan-21-baseline-executor-contracts-milestone-004-pr-2)). The first PR contained: a [GPU readiness protocol](docs/gpu-readiness.md) with seven separate human approvals, the baseline design above, and a [private visual-review specification](docs/private-review-viewer.md). None of the gates has been approved, and no GPU, inference or evaluation has run.
 
 **No empirical model-mitigation results have been published by FRP.** Research documents and experiment protocols are not evidence that protection works.
 
@@ -112,7 +112,7 @@ Read [the harness guide](docs/harness.md) for schema requirements, adapter inter
 | Shared context and contributor guidance | Documented |
 | CPU experiment harness | Milestone 001 (manifest + planner) and Milestone 002 (simulated pipeline) merged |
 | Model selection and architecture verification | Milestone 003 merged (pinned source review, provenance inventory); weight hashes, licence-use review and GPU quote still pending |
-| GPU baseline and calibration | **Milestone 004 in progress** — PR 1 (CPU-only readiness protocol, baseline design, private-review specification) under review; no gate approved, no GPU, download, inference or evaluation run |
+| GPU baseline and calibration | **Milestone 004 in progress** — PR 1 merged; PR 2 (CPU-only baseline executor contracts, mocked; live backend disabled) under review; no gate approved, no GPU, download, inference or evaluation run |
 | Wan 2.1 conditioning pathway ablation | Not started |
 | Intrinsic model-level mitigation | Hypothesis |
 | Robustness and hardening | Future research |

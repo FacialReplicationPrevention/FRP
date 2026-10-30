@@ -11,7 +11,7 @@
 | 1. Portable project context | **Documented** | Give humans and coding agents shared instructions and decisions |
 | 2. CPU experiment harness | **Milestones 001 and 002 merged** ([#1](https://github.com/FacialReplicationPrevention/FRP/issues/1)/PR [#2](https://github.com/FacialReplicationPrevention/FRP/pull/2); [#5](https://github.com/FacialReplicationPrevention/FRP/issues/5)/PR [#6](https://github.com/FacialReplicationPrevention/FRP/pull/6)); remaining items listed below | Reproducible config, variant planning, simulated execution/evaluation/reporting and tests |
 | 2b. Model selection and architecture verification | **Milestone 003 merged** ([#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)/PR [#8](https://github.com/FacialReplicationPrevention/FRP/pull/8)); weight hashes, licence-use review and GPU quote still pending | Pin and source-verify candidate open-weight models before any GPU work |
-| 3. GPU instrumentation and baseline | **In progress — Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)): PR 1 of 3 (CPU-only readiness and design) under review. No GPU, download, inference or evaluation has run** | Verify Wan pathways and generate authorised baseline results |
+| 3. GPU instrumentation and baseline | **In progress — Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)): PR 1 merged ([#10](https://github.com/FacialReplicationPrevention/FRP/pull/10)); PR 2 of 3 (CPU-only baseline executor contracts, mocked) under review. No GPU, download, inference or evaluation has run** | Verify Wan pathways and generate authorised baseline results |
 | 4. Conditioning-pathway experiment | **Not started** | Test Wan 2.1 A/B/C/D and jointly measure identity + utility |
 | 5. Intrinsic model mitigation | **Research hypothesis** | Evaluate training-time/model-weight changes |
 | 6. Robustness and hardening | **Future research** | Evaluate resistance to adaptation and deployment bypass |
@@ -87,15 +87,22 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 
 ### Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) — three gated PRs
 
-**PR 1 — CPU-only readiness and private-review design (this PR; under review).** Preparation only: it authorises no GPU spend, download or processing.
+**PR 1 — CPU-only readiness and private-review design (merged, [#10](https://github.com/FacialReplicationPrevention/FRP/pull/10)).** Preparation only: it authorises no GPU spend, download or processing.
 
 - [x] Draft the [GPU readiness protocol](docs/gpu-readiness.md): seven separate human approvals, unverified hardware requirements, a blank cost-quote template, secure weight acquisition, a consented-adult private-data procedure and the execution allowlist (including `use_prompt_extend: false`). *Drafted; every gate is pending.*
 - [x] Add a public readiness template ([`readiness/wan21-i2v-baseline.yaml`](readiness/wan21-i2v-baseline.yaml)) and `frp readiness`, an offline drift check that can express only pending gates and cannot grant anything.
 - [x] Draft the single-condition baseline design ([Experiment 003](experiments/003-wan21-i2v-baseline-design.md)), separate from A/B/C/D, with smoke, calibration and baseline roles.
 - [x] Draft the [private visual-review specification](docs/private-review-viewer.md) (design only; no viewer built).
-- [ ] Ada review. Approval of PR 1 does **not** approve any gate.
+- [x] Ada review. Approval of PR 1 did **not** approve any gate.
 
-**PR 2 — Real Wan 2.1 baseline executor behind existing contracts, mock tests first (not started).** Requires PR 1 merged and does not itself authorise running a GPU.
+**PR 2 — Wan 2.1 baseline executor contracts and mocked integration (under review).** Does not itself authorise running a GPU.
+
+- [x] Separate `baseline-0.1-draft` manifest, plan and result contracts (`frp.baseline`); A/B/C/D contracts unchanged; `frp baseline-plan` (planning only).
+- [x] `BaselineExecutor` interface and a fail-closed `Wan21BaselineExecutor` over an injected backend: local hash, source, environment and private-authorisation gates, prompt-extension and network guards, conditioning/CFG control-flow checks, cleanup. Tested with fake backends only.
+- [x] `build_readiness_report` now performs the provenance cross-check itself.
+- [ ] **Live Wan 2.1 backend: disabled.** Not wired, not verified; no upstream call has been run.
+- [ ] Private authorisation provider, approved environment digest, real checkpoint hashes: none exist.
+- [ ] Ada review.
 
 **PR 3 — Approved smoke test, face/identity and quality evaluation, private visual review (not started).** Requires separate human budget, licence and consent approvals.
 
@@ -103,7 +110,7 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 - [ ] Confirm model/checkpoint licence and permitted research use.
 - [ ] Approve a GPU-provider budget, quota and shutdown policy; record an actual quote rather than estimate it as fact.
 - [ ] Pin upstream source, model hashes, dependencies and reproducible container image.
-- [ ] Lock upstream prompt extension off (`use_prompt_extend: false`) among the recorded generation controls, so a vision-language model cannot add an uncontrolled image → text route ([Research 005](research/005-wan-model-candidates.md); requested in the Milestone 003 review). *(Recorded as a fixed control in the readiness template; not yet enforced by any executor or manifest.)*
+- [ ] Lock upstream prompt extension off (`use_prompt_extend: false`) among the recorded generation controls, so a vision-language model cannot add an uncontrolled image → text route ([Research 005](research/005-wan-model-candidates.md); requested in the Milestone 003 review). *(Fixed control in the readiness template and locked in the baseline manifest, with a runtime guard in the mock-tested baseline executor; not enforced for the A/B/C/D manifest and unverified against a live run.)*
 - [ ] Prepare a private, permission-verified adult dataset and ethical handling/retention procedure.
 - [ ] Instrument CLIP feature and VAE condition metadata (shape/dtype/device), not raw biometric information in shared logs.
 - [ ] Verify positive- and negative-text passes use the intended paired image conditions.
@@ -151,4 +158,4 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 
 ## Next immediate action
 
-Milestone 003 is merged ([PR #8](https://github.com/FacialReplicationPrevention/FRP/pull/8)). The current milestone is **Milestone 004** ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)); its PR 1 is CPU-only preparation and awaits review. After it is merged, the separately approved steps are, in order: the human gates in [docs/gpu-readiness.md](docs/gpu-readiness.md) (licence, consent, storage, provider terms, quote and budget cap), then PR 2 (real executor behind mock tests), then, only with explicit approvals, PR 3 (smoke test and private visual review). **No GPU rental, weight download, inference, portrait processing or evaluation of real people is authorised by Milestone 003 or by PR 1 of Milestone 004.** Wan 2.2 has no transferable A/B/C/D protocol and is not part of this milestone.
+Milestone 003 is merged ([PR #8](https://github.com/FacialReplicationPrevention/FRP/pull/8)). The current milestone is **Milestone 004** ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)); PR 1 is merged and PR 2 (CPU-only baseline executor contracts, mocked; live backend disabled) awaits review. After PR 2 is merged, the separately approved steps are, in order: the human gates in [docs/gpu-readiness.md](docs/gpu-readiness.md) (licence, consent, storage, provider terms, quote and budget cap), then PR 2 (real executor behind mock tests), then, only with explicit approvals, PR 3 (smoke test and private visual review). **No GPU rental, weight download, inference, portrait processing or evaluation of real people is authorised by Milestone 003 or by PR 1 of Milestone 004.** Wan 2.2 has no transferable A/B/C/D protocol and is not part of this milestone.

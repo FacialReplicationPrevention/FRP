@@ -1,0 +1,61 @@
+# SYNTHETIC EXAMPLE - for exercising the FRP baseline dry-run planner only (baseline-0.1-draft).
+#
+# - Identity pseudonyms (SYN-*) are synthetic and refer to no real person.
+# - Prompt and seeds are illustrative; they are NOT preregistered Experiment 003 values.
+# - Pins are the reviewed Wan 2.1 pins (Research 005) or null. Hashes, environment digest and
+#   hardware are null: they have not been verified or approved and must not be filled from guesses.
+# - This file grants nothing. A syntactically valid manifest is NOT EXECUTION READY.
+# - Real manifests that reference consenting participants belong in private storage.
+schema_version: baseline-0.1-draft
+protocol: wan2.1-i2v-baseline
+experiment_id: FRP-BASELINE-SYNTHETIC-EXAMPLE
+status: planned
+run_role: baseline
+
+identities:
+  - pseudonym: SYN-101
+    identity_split: evaluation
+  - pseudonym: SYN-102
+    identity_split: evaluation
+prompts:
+  - id: P01-neutral-motion
+    text: "A person in a softly lit room slowly turns their head and smiles."
+seeds: [1001, 2002]
+
+upstream_repository: Wan-Video/Wan2.1
+upstream_commit_sha: 9737cba9c1c3c4d04b33fcad41c111989865d315
+checkpoint: Wan-AI/Wan2.1-I2V-14B-480P
+checkpoint_revision: 6b73f84e66371cdfe870c72acd6826e1d61cf279
+checkpoint_hashes: null
+software_environment_hash: null
+gpu_model: null
+
+use_prompt_extend: false
+clip_conditioning: original
+vae_first_frame_conditioning: original
+adapters: none
+remote_inference_services: none
+negative_prompt_policy: upstream_config_default
+prompt_policy: neutral_motion_only
+generator: upstream_seeded_torch_cuda_generator
+artefact_storage: private_only
+consent_record_location: private_only
+image_count_per_identity: 1
+
+prompt_template_version: null
+sampler: null
+sampling_steps: null
+guidance_scale: null
+sample_shift: null
+frame_count: null
+resolution: null
+precision: null
+offload_model: null
+image_preprocessing_version: null
+
+frame_indices: null
+face_evaluator_revision: null
+face_detection_settings: null
+calibration_dataset_version: null
+quality_rubric_version: null
+analysis_plan_version: null

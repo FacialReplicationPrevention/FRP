@@ -1,7 +1,7 @@
 # FRP — Project context and scientific rationale
 
 **Last updated:** 2026-10-30  
-**Project stage:** Early research, experiment design, pinned static source review of candidate models (Milestone 003, merged), and a CPU-only harness with a *simulated* pipeline, offline provenance validation and an offline GPU-readiness template check. Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is current and its first PR is CPU-only preparation. No model inference, GPU run or evaluation of real people has taken place, and no Wan experiment results are reported.
+**Project stage:** Early research, experiment design, pinned static source review of candidate models (Milestone 003, merged), and a CPU-only harness with a *simulated* pipeline, offline provenance validation and an offline GPU-readiness template check. Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is current; its first PR (CPU-only preparation) is merged and its second adds CPU-only baseline contracts and a mock-tested, fail-closed executor boundary whose live backend is disabled. No model inference, GPU run or evaluation of real people has taken place, and no Wan experiment results are reported.
 
 ## What is FRP?
 

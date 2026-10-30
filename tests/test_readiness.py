@@ -20,6 +20,7 @@ from frp.readiness import (
     GATE_IDS,
     NOTICE,
     REQUIREMENT_IDS,
+    ProvenanceMismatchError,
     ReadinessError,
     check_against_provenance,
     load_readiness,
@@ -251,7 +252,7 @@ def test_malformed_yaml_and_large_files_fail_safely(tmp_path: Any) -> None:
 
 
 def test_report_states_no_authorisation() -> None:
-    report = build_readiness_report(load_readiness(TEMPLATE))
+    report = build_readiness_report(load_readiness(TEMPLATE), load_provenance(INVENTORY))
     assert report["authorised_to_execute"] is False
     assert set(report["gates"].values()) == {"pending"}
     assert "NOT AN AUTHORISATION" in NOTICE
@@ -316,3 +317,18 @@ def test_cli_reports_provenance_disagreement(
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     assert main(["readiness", str(path), "--provenance", str(INVENTORY)]) == EXIT_INVALID
     assert "disagrees with provenance" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("field", ["source_commit", "checkpoint_revision", "candidate_id"])
+def test_report_helper_cannot_mark_an_unchecked_record_as_provenance_matched(field: str) -> None:
+    """Regression: build_readiness_report used to hard-code pins_match_provenance_inventory."""
+    data = _data()
+    data["target"][field] = "no-such-candidate" if field == "candidate_id" else "d" * 40
+    record = parse_readiness(data)  # shape-valid, but not the reviewed pin
+    with pytest.raises(ProvenanceMismatchError):
+        build_readiness_report(record, load_provenance(INVENTORY))
+
+
+def test_report_helper_requires_an_inventory_argument() -> None:
+    with pytest.raises(TypeError):
+        build_readiness_report(load_readiness(TEMPLATE))  # type: ignore[call-arg]
