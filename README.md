@@ -13,7 +13,7 @@ Exploratory, open-source research for generative image and video systems — inc
 </div>
 
 > [!IMPORTANT]
-> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning and a **simulated** pipeline on synthetic fixtures only — no model inference and no biometric evaluation.
+> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning, a **simulated** pipeline on synthetic fixtures and an offline model-provenance check — no model inference and no biometric evaluation.
 
 ## Why FRP?
 
@@ -33,7 +33,7 @@ Facial similarity **does not establish consent**. No proposed technique is assum
 
 FRP is a **cross-model** research project: the question of unauthorised identity replication applies to many generative image and video systems. Experiments, however, are **model-specific**, because each architecture conditions on images differently and must be verified against pinned source code before a protocol is written.
 
-FRP's first experimental target is the official [Wan2.1 image-to-video implementation](https://github.com/Wan-Video/Wan2.1). Our architectural review of Wan 2.1 identifies two image-conditioning routes:
+FRP's first experimental target is the official [Wan2.1 image-to-video implementation](https://github.com/Wan-Video/Wan2.1), pinned at commit `9737cba` with the `Wan-AI/Wan2.1-I2V-14B-480P` checkpoint (see [Research 005](research/005-wan-model-candidates.md)). Our source review of Wan 2.1 identifies two image-conditioning routes:
 
 - **CLIP Vision**, contributing image features to transformer attention.
 - **Video VAE first-frame conditioning**, supplying the source-frame condition to the denoising latent input.
@@ -49,7 +49,7 @@ The proposed **paired 2 × 2 Wan 2.1 experiment** varies which pathway receives 
 
 This is a **diagnostic ablation design**, not a validated privacy safeguard. Reduced similarity is not a successful result if faces disappear or generated video quality is severely impaired. See [Research 004](research/004-conditioning-ablation-design.md) and [Experiment 002](experiments/002-conditioning-ablation-protocol.md).
 
-This A/B/C/D design is specific to Wan 2.1 I2V. Other candidates, such as Wan 2.2 I2V, are under consideration but have **not** been source-verified; the Wan 2.1 design is not assumed to transfer to them (see [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)).
+This A/B/C/D design is specific to Wan 2.1 I2V. A static review of **Wan 2.2 I2V-A14B** at a pinned commit found **no CLIP-vision pathway** (only the VAE first-frame route, split across two denoising experts), so the Wan 2.1 design does not transfer; any Wan 2.2 study needs its own reviewed protocol. Candidate models, provenance and the recommended baseline are documented in [Research 005](research/005-wan-model-candidates.md) and the machine-readable [provenance inventory](provenance/model-candidates.yaml).
 
 ## Research library
 
@@ -58,7 +58,8 @@ This A/B/C/D design is specific to Wan 2.1 I2V. Other candidates, such as Wan 2.
 | [Research 001 — Measuring facial identity replication](research/001-identity-replication-measurement.md) | Measurement methodology and uncertainty |
 | [Research 002 — CID feasibility and threat model](research/002-cid-feasibility-threat-model.md) | Architectural hypotheses, assumptions and bypass risks |
 | [Research 003 — Wan2.1 I2V architecture](research/003-wan21-i2v-architecture.md) | Source-code study of image-conditioning paths |
-| [Research 004 — Conditioning ablation design](research/004-conditioning-ablation-design.md) | Controls, comparisons and interpretation |
+| [Research 004 — Conditioning ablation design](research/004-conditioning-ablation-design.md) | Controls, comparisons and interpretation (Wan 2.1 only) |
+| [Research 005 — Wan model candidates](research/005-wan-model-candidates.md) | Pinned source verification of Wan 2.1/2.2, candidate inventory and baseline recommendation |
 
 ## Experimental design
 
@@ -71,7 +72,7 @@ This A/B/C/D design is specific to Wan 2.1 I2V. Other candidates, such as Wan 2.
 
 ## Getting started
 
-The current implementation is a **CPU-only Python harness**. It validates versioned experiment manifests, creates deterministic Wan 2.1 A/B/C/D run plans, and runs a **simulated** execution → evaluation → aggregation → reporting pipeline on deterministic synthetic fixtures. It runs **no inference**, downloads **no model weights**, and processes **no portraits or biometric data**.
+The current implementation is a **CPU-only Python harness**. It validates versioned experiment manifests, creates deterministic Wan 2.1 A/B/C/D run plans, runs a **simulated** execution → evaluation → aggregation → reporting pipeline on deterministic synthetic fixtures, and validates the model-candidate provenance inventory offline. It runs **no inference**, downloads **no model weights**, and processes **no portraits or biometric data**.
 
 **Prerequisite:** Python 3.11+. GitHub Codespaces installs dependencies using [the devcontainer configuration](.devcontainer/devcontainer.json). For a local setup:
 
@@ -86,11 +87,14 @@ pytest
 
 frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
 frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
+frp provenance provenance/model-candidates.yaml
 ~~~
 
 The synthetic example intentionally has unset execution fields and reports **NOT READY**. For JSON planning output, append the <code>--format json</code> option. To enforce readiness validation, append <code>--require-ready</code>; this only checks manifest fields, **not** consent, licence validity or scientific correctness.
 
 `frp simulate` writes an aggregate-only `report.md` and `summary.csv`, both marked **SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE**. Select fixture scenarios (failed runs, absent or multiple faces, evaluator errors, missing quality scores, interrupted experiments) with <code>--scenario</code>. Simulated reports test software contracts and missing-data accounting; they say nothing about any model or safeguard.
+
+`frp provenance` checks the model-candidate inventory for internal consistency (pinned evidence for `verified` claims, no invented weight digests, no Wan 2.1 protocol on other architectures). It fetches nothing and does not re-verify upstream sources; every candidate is reported **NOT READY** for execution.
 
 Read [the harness guide](docs/harness.md) for schema requirements, adapter interfaces, result and report formats, privacy safeguards, exit codes and limitations.
 
@@ -100,8 +104,8 @@ Read [the harness guide](docs/harness.md) for schema requirements, adapter inter
 | --- | --- |
 | Research foundation and protocol drafting | Documented — not experimentally validated |
 | Shared context and contributor guidance | Documented |
-| CPU experiment harness | In progress — Milestone 001 (manifest + planner) merged; Milestone 002 (simulated pipeline) under review |
-| Model selection and architecture verification | Not started |
+| CPU experiment harness | Milestone 001 (manifest + planner) and Milestone 002 (simulated pipeline) merged |
+| Model selection and architecture verification | In progress — Milestone 003 (pinned source review, provenance inventory) under review |
 | GPU baseline and calibration | Not started |
 | Wan 2.1 conditioning pathway ablation | Not started |
 | Intrinsic model-level mitigation | Hypothesis |
@@ -114,7 +118,7 @@ The [roadmap](ROADMAP.md) records milestones, decision gates, and the evidence r
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — mission, hypotheses, boundaries, current evidence and open questions.
 - [ROADMAP.md](ROADMAP.md) — milestones, exit criteria and next engineering tasks.
 - [AGENTS.md](AGENTS.md) — instructions for human and AI contributors.
-- [docs/harness.md](docs/harness.md) — Python harness usage, simulated pipeline contracts and scientific limitations.
+- [docs/harness.md](docs/harness.md) — Python harness usage, simulated pipeline and provenance contracts, and scientific limitations.
 
 ## Research and privacy principles
 

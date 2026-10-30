@@ -5,6 +5,8 @@
 **Design rationale:** [Research 004](../research/004-conditioning-ablation-design.md)  
 **Ethics:** No portraits, biometric embeddings, identity-matched outputs or consent records in this public repository.
 
+> **Scope and Gate 0 status (2026-10-30).** Wan 2.1 I2V only. [Research 005](../research/005-wan-model-candidates.md) records, pending review, the pinned source commit (`9737cba9c1c3c4d04b33fcad41c111989865d315`), the checkpoint revision (`Wan-AI/Wan2.1-I2V-14B-480P` @ `6b73f84e66371cdfe870c72acd6826e1d61cf279`), Apache-2.0 licence metadata and a static re-inspection of both paths at that commit. Weight hashes, the human licence/research-use review and all other Gate 0 items remain open, and the checklist below is left unchanged until review. The A–D matrix and example manifest are unchanged.
+
 ## Goal
 
 Evaluate whether changes to either or both input-image conditioning paths alter facial-identity similarity while preserving acceptable, useful video quality.

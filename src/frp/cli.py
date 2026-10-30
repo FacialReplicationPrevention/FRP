@@ -1,7 +1,8 @@
-"""Command-line interface. Dry-run planning and simulated pipeline only: never runs inference.
+"""Command-line interface. Dry-run planning, simulated pipeline and static provenance checks only:
+never runs inference or fetches models.
 
-Exit codes: 0 success; 1 invalid manifest, plan or results; 2 usage error; 3 not ready
-(only with ``--require-ready``); 4 report files could not be written.
+Exit codes: 0 success; 1 invalid manifest, plan, results or provenance inventory; 2 usage error;
+3 not ready (only with ``--require-ready``); 4 report files could not be written.
 """
 
 from __future__ import annotations
@@ -16,6 +17,14 @@ from frp import __version__
 from frp.aggregation import aggregate
 from frp.manifest import ExperimentManifest, ManifestError, load_manifest, unset_execution_fields
 from frp.planner import PlanInvariantError, PlannedRun, RunPlan, generate_run_plan
+from frp.provenance import NOTICE as PROVENANCE_NOTICE
+from frp.provenance import (
+    Claim,
+    ProvenanceError,
+    ProvenanceInventory,
+    load_provenance,
+    pending_claims,
+)
 from frp.reporting import CSV_FILENAME, MARKDOWN_FILENAME, SIMULATED_BANNER, write_reports
 from frp.results import ResultValidationError
 from frp.simulation import DEFAULT_SCENARIO, SCENARIOS, simulate_experiment
@@ -150,8 +159,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="frp",
         description=(
-            "FRP CPU-only harness. Dry-run planning and simulated pipeline only; "
-            "never runs inference."
+            "FRP CPU-only harness. Dry-run planning, simulated pipeline and offline provenance "
+            "checks only; never runs inference or downloads models."
         ),
     )
     parser.add_argument("--version", action="version", version=f"frp {__version__}")
@@ -201,6 +210,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"synthetic fixture scenario (default: {DEFAULT_SCENARIO})",
     )
     simulate.add_argument("--overwrite", action="store_true", help="replace existing report files")
+    provenance = subcommands.add_parser(
+        "provenance",
+        help="validate a model-candidate provenance inventory offline (no network, no weights)",
+    )
+    provenance.add_argument("inventory", help="path to a YAML/JSON provenance inventory")
+    provenance.add_argument("--format", choices=("text", "json"), default="text")
     return parser
 
 
@@ -253,6 +268,92 @@ def _simulate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _claim_summary(claim: Claim[Any]) -> dict[str, Any]:
+    return {"value": claim.value, "status": claim.status, "evidence_links": len(claim.evidence)}
+
+
+def build_provenance_report(inventory: ProvenanceInventory) -> dict[str, Any]:
+    """Summary of a validated inventory. Statuses are as recorded, not re-verified."""
+    return {
+        "notice": PROVENANCE_NOTICE,
+        "frp_version": __version__,
+        "provenance_schema_version": inventory.provenance_schema_version,
+        "inventory_id": inventory.inventory_id,
+        "reviewed_on": inventory.reviewed_on.isoformat(),
+        "execution_ready_candidates": 0,
+        "candidates": [
+            {
+                "candidate_id": c.candidate_id,
+                "model_family": c.model_family,
+                "task": c.task,
+                "provenance": c.provenance,
+                "frp_role": c.frp_role,
+                "source_repository": c.source_repository,
+                "source_commit": _claim_summary(c.source_commit),
+                "checkpoint_repository": c.checkpoint_repository,
+                "checkpoint_revision": _claim_summary(c.checkpoint_revision),
+                "weight_sha256": _claim_summary(c.weight_sha256),
+                "licence": _claim_summary(c.licence),
+                "conditioning": _claim_summary(c.conditioning),
+                "derived_from": None if c.derived_from is None else _claim_summary(c.derived_from),
+                "protocols": c.protocols,
+                "execution_readiness": c.execution_readiness,
+                "unverified_claims": pending_claims(c),
+            }
+            for c in inventory.candidates
+        ],
+    }
+
+
+def _render_provenance_text(report: dict[str, Any]) -> str:
+    candidates = report["candidates"]
+    lines = [
+        report["notice"],
+        "",
+        f"Inventory:  {report['inventory_id']} (provenance schema "
+        f"{report['provenance_schema_version']}, reviewed {report['reviewed_on']})",
+        f"Candidates: {len(candidates)}  Execution readiness: NOT READY for every candidate "
+        "(schema 1.0 records provenance only)",
+        "",
+    ]
+    header = ("candidate", "provenance", "role", "source commit", "conditioning", "protocols")
+    rows = [
+        (
+            c["candidate_id"],
+            c["provenance"],
+            c["frp_role"],
+            (c["source_commit"]["value"] or "")[:12] or c["source_commit"]["status"],
+            c["conditioning"]["status"],
+            ",".join(c["protocols"]) or "-",
+        )
+        for c in candidates
+    ]
+    widths = [max(len(row[i]) for row in (header, *rows)) for i in range(len(header))]
+    for row in (header, *rows):
+        lines.append(
+            "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip()
+        )
+    lines += ["", "Claims not verified by FRP (status as recorded):"]
+    for c in candidates:
+        lines.append(f"  {c['candidate_id']}: {', '.join(c['unverified_claims']) or 'none'}")
+    return "\n".join(lines) + "\n"
+
+
+def _provenance(args: argparse.Namespace) -> int:
+    try:
+        inventory = load_provenance(args.inventory)
+    except ProvenanceError as exc:
+        _print_problems("frp: invalid provenance inventory:", exc.problems)
+        return EXIT_INVALID
+    report = build_provenance_report(inventory)
+    if args.format == "json":
+        json.dump(report, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        sys.stdout.write(_render_provenance_text(report))
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     try:
@@ -262,6 +363,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "simulate":
         return _simulate(args)
+    if args.command == "provenance":
+        return _provenance(args)
 
     if not args.dry_run:
         print(

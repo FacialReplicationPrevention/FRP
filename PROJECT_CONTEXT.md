@@ -1,7 +1,7 @@
 # FRP — Project context and scientific rationale
 
-**Last updated:** 2026-10-29  
-**Project stage:** Early research, experiment design and a CPU-only harness with a *simulated* pipeline; no model inference or Wan GPU experiments reported.
+**Last updated:** 2026-10-30  
+**Project stage:** Early research, experiment design, pinned static source review of candidate models, and a CPU-only harness with a *simulated* pipeline and offline provenance validation; no model inference and no Wan GPU experiments reported.
 
 ## What is FRP?
 
@@ -44,13 +44,13 @@ We are deliberately tackling **measurement and model feasibility first**, with h
 
 ## Current architecture under investigation
 
-**Initial candidate:** [Official Wan2.1 image-to-video](https://github.com/Wan-Video/Wan2.1), especially the `Wan2.1-I2V-14B-480P` checkpoint described in [Experiment 002](experiments/002-conditioning-ablation-protocol.md).
+**Initial candidate:** [Official Wan2.1 image-to-video](https://github.com/Wan-Video/Wan2.1), pinned at commit `9737cba9c1c3c4d04b33fcad41c111989865d315`, with the `Wan-AI/Wan2.1-I2V-14B-480P` checkpoint at Hub revision `6b73f84e66371cdfe870c72acd6826e1d61cf279` (weight hashes not yet verified), as described in [Experiment 002](experiments/002-conditioning-ablation-protocol.md) and [Research 005](research/005-wan-model-candidates.md).
 
 The implementation exposes two image-conditioning routes:
 - **CLIP Vision pathway:** visual image features projected into transformer attention.
 - **Video VAE first-frame pathway:** an encoded conditioning video containing the source frame, followed by blank frames, with a mask; the condition joins the denoising latent input.
 
-This is a **source-code-derived architectural observation**; it does not establish the exact location or separability of facial identity. See [Research 003](research/003-wan21-i2v-architecture.md).
+This is a **source-code-derived architectural observation**, re-checked at the pinned commit; it does not establish the exact location or separability of facial identity. See [Research 003](research/003-wan21-i2v-architecture.md) and [Research 005](research/005-wan-model-candidates.md). The same code also offers an optional, default-off prompt-extension mode that can pass the image to a vision-language model and so influence text conditioning; Experiment 002 assumes it is off.
 
 ## Model scope and multi-model strategy
 
@@ -58,12 +58,12 @@ FRP is a **cross-model** research project, not a Wan 2.1-only project. Experimen
 
 - **Why open weights:** locally run open-weight models are outside hosted-service filters, so any durable safeguard would need to be a property of the model or its training, which is the long-term question above.
 - **Wan 2.1 I2V** is the original, specifically scoped reference for the CLIP-Vision/VAE first-frame ablation. Research 003–004, Experiment 002, the harness's A/B/C/D run plan and its result protocol id `wan2.1-i2v-clip-vae-2x2` all apply to Wan 2.1 only.
-- **Wan 2.2 I2V** is a candidate for subsequent open-weight evaluation. FRP has **not** verified its conditioning implementation; the Wan 2.1 A/B/C/D design must not be assumed to transfer. A separate protocol may be written only after inspection at a pinned upstream commit.
-- **Other official generations and derivative/community checkpoints** may be inventoried where provenance, licence, reproducibility and permissible research access can be verified. Release, naming and architecture claims are provisional until checked against pinned official sources.
-- **Distinct properties:** facial identity retention, content/safety capabilities and authorisation are separate questions. Derivative fine-tunes with relaxed content restrictions may matter to the threat model, but initial FRP experiments remain neutral, consented and non-explicit.
-- **Model-specific reproducibility:** every model studied needs its own pinned source commit, checkpoint hashes, licence review, verified description of its conditioning paths and a reviewed protocol identifier.
+- **Wan 2.2 I2V-A14B** is the optional later candidate. A static review at pinned commit `1ea34ff48f87168174e12956e200b1d908b1c5ff` found **no CLIP-vision pathway**: the image enters only through the VAE first-frame latent and mask, and denoising is split between two expert models. The Wan 2.1 A/B/C/D design therefore does **not** transfer; a separate protocol would need its own scientific review. Wan 2.2 TI2V-5B uses yet another mechanism (first-latent-frame replacement).
+- **Other official generations and derivative/community checkpoints** are inventoried in [Research 005](research/005-wan-model-candidates.md) only where existence and access are confirmed; unverified properties are marked as such. No Wan generation after 2.2 was found in the official organisations as of 2026-10-30.
+- **Distinct properties:** facial identity retention, content/safety capabilities and authorisation are separate questions. Derivative fine-tunes with relaxed content restrictions, and quantised or distilled derivatives that lower hardware requirements, matter to the threat model and could undo a future model-level mitigation; initial FRP experiments remain neutral, consented and non-explicit, and FRP does not acquire or test explicit-content checkpoints.
+- **Model-specific reproducibility and provenance:** every model studied needs its own pinned source commit, checkpoint revision and weight hashes, licence review, a verified description of its conditioning paths and a reviewed protocol identifier. These are recorded in the machine-readable [provenance inventory](provenance/model-candidates.yaml) with explicit `verified` / `pending` / `not_verified` / `unknown` statuses and checked offline by `frp provenance`, which refuses to apply the Wan 2.1 protocol to any other architecture. A valid inventory is internally consistent, not proof of the recorded facts.
 
-Model selection and verification are tracked in [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4) and Phase 2b of the [roadmap](ROADMAP.md).
+Model selection and verification are Milestone 003 ([#7](https://github.com/FacialReplicationPrevention/FRP/issues/7), documentation tracker [#4](https://github.com/FacialReplicationPrevention/FRP/issues/4)) and Phase 2b of the [roadmap](ROADMAP.md). The recommended initial baseline is a recommendation, not an authorisation to download weights or run GPU jobs.
 
 ## Current experimental hypothesis
 
@@ -94,11 +94,12 @@ A lower similarity score alone is **not a successful prevention result**; an abs
 - [Research 001 — Identity replication measurement](research/001-identity-replication-measurement.md): measuring retention and limitations of face similarity.
 - [Research 002 — CID feasibility and threat model](research/002-cid-feasibility-threat-model.md): architectural hypotheses and bypass risks.
 - [Research 003 — Wan2.1 I2V architecture](research/003-wan21-i2v-architecture.md): observed conditioning pathways.
-- [Research 004 — Conditioning ablation design](research/004-conditioning-ablation-design.md): methodological controls and hypotheses.
+- [Research 004 — Conditioning ablation design](research/004-conditioning-ablation-design.md): methodological controls and hypotheses (Wan 2.1 only).
+- [Research 005 — Wan model candidates](research/005-wan-model-candidates.md): pinned source verification of Wan 2.1 and 2.2, candidate inventory and baseline recommendation.
 - [Experiment 001 — Baseline protocol](experiments/001-baseline-protocol.md): evaluation baseline plan.
 - [Experiment 002 — Conditioning ablation protocol](experiments/002-conditioning-ablation-protocol.md): proposed pilot and data schema.
 
-**Evidence status:** These are literature/source-code studies and proposed protocols. The project has **not** reported empirical model mitigation results. Do not imply that any tested protection, percentage reduction or universal safeguard exists. The harness's simulated reports ([docs/harness.md](docs/harness.md)) are software tests on synthetic fixtures, not evidence.
+**Evidence status:** These are literature/source-code studies and proposed protocols. The project has **not** reported empirical model mitigation results. Do not imply that any tested protection, percentage reduction or universal safeguard exists. The harness's simulated reports ([docs/harness.md](docs/harness.md)) are software tests on synthetic fixtures, not evidence, and a valid provenance inventory is a consistency check, not verification of model behaviour.
 
 ## Development environment and working model
 

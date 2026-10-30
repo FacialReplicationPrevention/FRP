@@ -1,6 +1,8 @@
 """Versioned manifest schema for *planned* FRP conditioning-ablation runs.
 
 Field names follow the example manifest in ``experiments/002-conditioning-ablation-protocol.md``.
+Schema 1.0 plans the Wan 2.1 I2V CLIP x VAE A/B/C/D protocol only, so ``upstream_repository``
+and ``checkpoint`` must name the reviewed Wan 2.1 source and checkpoint; other models fail closed.
 Planning inputs (identities, prompts, seeds, variants) are required to build a run plan.
 Execution inputs may be ``null`` while planning: ``null`` is the only accepted "explicitly
 unset" marker, and placeholder text such as ``TODO`` is rejected. Use
@@ -38,6 +40,11 @@ SEED_MIN: Final = 0
 SEED_MAX: Final = 2**32 - 1
 
 MAX_MANIFEST_BYTES: Final = 1_048_576
+
+# The only source and checkpoint reviewed for the A/B/C/D protocol (Experiment 002, Research 005).
+# Widening this scope needs scientific review; Wan 2.2 I2V-A14B has no CLIP-vision path.
+WAN21_SOURCE_REPOSITORY: Final = "Wan-Video/Wan2.1"
+WAN21_I2V_CHECKPOINTS: Final = ("Wan-AI/Wan2.1-I2V-14B-480P",)
 
 _PLACEHOLDER_RE: Final = re.compile(
     r"^(?:<.*>|\{\{.*\}\}|\?+|x{3,}|tbd|todo|fixme|changeme|placeholder|unknown|unset|none|"
@@ -210,6 +217,27 @@ class ExperimentManifest(BaseModel):
             raise ValueError(
                 f"duplicate seed(s): {', '.join(map(str, duplicates))}; "
                 "each seed must be listed once (it is reused across A/B/C/D automatically)"
+            )
+        return value
+
+    @field_validator("upstream_repository")
+    @classmethod
+    def _wan21_source_only(cls, value: str) -> str:
+        if value.casefold() != WAN21_SOURCE_REPOSITORY.casefold():
+            raise ValueError(
+                "schema 1.0 plans the Wan 2.1 I2V A/B/C/D protocol only; upstream_repository "
+                f"must be {WAN21_SOURCE_REPOSITORY} (other models need their own reviewed protocol)"
+            )
+        return value
+
+    @field_validator("checkpoint")
+    @classmethod
+    def _wan21_checkpoint_only(cls, value: str) -> str:
+        if value.casefold() not in {c.casefold() for c in WAN21_I2V_CHECKPOINTS}:
+            raise ValueError(
+                "schema 1.0 plans the Wan 2.1 I2V A/B/C/D protocol only; checkpoint must be "
+                f"{' or '.join(WAN21_I2V_CHECKPOINTS)} (other models need their own reviewed "
+                "protocol)"
             )
         return value
 

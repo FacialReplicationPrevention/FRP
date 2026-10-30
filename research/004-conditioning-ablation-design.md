@@ -5,6 +5,8 @@
 **Depends on:** [Research 001](001-identity-replication-measurement.md), [Research 003](003-wan21-i2v-architecture.md)  
 **Execution protocol:** [Experiment 002](../experiments/002-conditioning-ablation-protocol.md)
 
+> **Scope (2026-10-30).** This design applies to **Wan 2.1 I2V only** (official `Wan-AI/Wan2.1-I2V-14B-480P`). [Research 005](005-wan-model-candidates.md) re-checked the cited code at pinned commit `9737cba9c1c3c4d04b33fcad41c111989865d315` and found it consistent with the assumptions below. It also records limitations for review: an optional `--use_prompt_extend` path that can route the image into text conditioning, and different resize paths for CLIP and VAE. Wan 2.2 I2V-A14B has no CLIP-vision path, so this 2 × 2 design does not transfer. Nothing in the design below has been changed.
+
 ## Core question
 
 How sensitive is output facial-identity similarity to separately changing the CLIP-image and first-frame VAE conditioning pathways in an unmodified Wan2.1 image-to-video (I2V) checkpoint?
