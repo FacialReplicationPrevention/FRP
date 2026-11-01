@@ -53,7 +53,9 @@ IDENTITY_JUDGEMENTS: Final[tuple[IdentityJudgement, ...]] = (
     "uncertain",
     "not_assessable",
 )
-ItemStatus = Literal["available", "output_absent", "media_unavailable", "reference_unavailable"]
+ItemStatus = Literal[
+    "available", "output_absent", "media_unavailable", "output_unreadable", "reference_unavailable"
+]
 QualityCriterion = Literal[
     "subject_visibility", "temporal_continuity", "motion_plausibility", "visual_artefacts"
 ]

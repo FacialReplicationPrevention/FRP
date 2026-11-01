@@ -7,8 +7,10 @@ directly. The browser only ever receives what :meth:`ReviewController.session_vi
 **Mode A — identity inspection (unblinded).** Items are keyed by opaque item references and shown
 with their reference still, every sampled frame, a later-frame default and, only on request, the
 automated detection statuses and *uncalibrated* similarities. Failed, unexecuted,
-media-unavailable and reference-unavailable (missing or unreadable original) items are shown with
-their status and can only be judged ``not_assessable``.
+media-unavailable, output-unreadable (registered frames missing or damaged) and
+reference-unavailable (missing or unreadable original) items are shown with their status and can
+only be judged ``not_assessable``. Every frame is re-verified when the view is built and again when
+a judgement is submitted.
 
 **Mode B — blinded quality.** Only succeeded attempts, keyed by fresh session-specific blinding
 codes in a randomised order. No reference, no score, no detection status, no run id, item
@@ -115,7 +117,7 @@ def sampled_frames(sampled: Sequence[int], frame_count: int) -> list[dict[str, A
 
 
 def item_status(item: ReviewItem) -> ItemStatus:
-    """Status from the catalogue alone; the controller also checks the reference is readable."""
+    """Status from the catalogue alone; the controller also checks that the media are readable."""
     if item.outcome != "succeeded":
         return "output_absent"
     if item.output_media is None:
@@ -130,6 +132,11 @@ def _status_note(item: ReviewItem, status: ItemStatus) -> str:
         return f"Run not executed ({item.unexecuted_reason}). No output exists."
     if status == "media_unavailable":
         return "Output media unavailable in this store. Nothing is substituted."
+    if status == "output_unreadable":
+        return (
+            "Output media missing or damaged (frames do not match their registered digests). "
+            "Nothing is substituted; only not assessable can be recorded."
+        )
     if status == "reference_unavailable":
         return (
             "Original reference unavailable or unreadable. Identity cannot be compared; "
@@ -234,22 +241,41 @@ class ReviewController:
         entry = self.catalogue.media.get(item.output_media) if item.output_media else None
         return (entry.frame_count, entry.width, entry.height) if entry else (0, 0, 0)
 
-    def _reference_readable(self, item: ReviewItem) -> bool:
-        if item.reference_media is None:
+    def _readable(self, media_id: str | None) -> bool:
+        """Every frame exists, matches its registered digest and passes sanitising (fail closed)."""
+        entry = self.catalogue.media.get(media_id) if media_id is not None else None
+        if entry is None:
             return False
         try:
-            self.store.read_frame(self.catalogue, item.reference_media, 0)
+            for index in range(entry.frame_count):
+                self.store.read_frame(self.catalogue, media_id, index)
         except StoreError:
             return False
         return True
 
-    def _status(self, item: ReviewItem, reference_readable: bool | None = None) -> ItemStatus:
+    def _reference_readable(self, item: ReviewItem) -> bool:
+        return self._readable(item.reference_media)
+
+    def _output_readable(self, item: ReviewItem) -> bool:
+        return self._readable(item.output_media)
+
+    def _status(
+        self,
+        item: ReviewItem,
+        *,
+        output_readable: bool | None = None,
+        reference_readable: bool | None = None,
+    ) -> ItemStatus:
         status = item_status(item)
-        if reference_readable is None:
-            reference_readable = self._reference_readable(item)
-        if status == "available" and not reference_readable:
+        if status in ("output_absent", "media_unavailable"):
+            return status
+        if not (self._output_readable(item) if output_readable is None else output_readable):
+            return "output_unreadable"
+        if not (
+            self._reference_readable(item) if reference_readable is None else reference_readable
+        ):
             return "reference_unavailable"
-        return status
+        return "available"
 
     def _blinding_compromised(self) -> bool:
         """Whether this reviewer has opened Mode A on the store, even concurrently with this one."""
@@ -269,7 +295,12 @@ class ReviewController:
         for position, item in enumerate(self.catalogue.items, 1):
             frame_count, width, height = self._output_shape(item)
             readable = self._reference_readable(item)
-            status = self._status(item, readable)
+            output_readable = frame_count > 0 and self._output_readable(item)
+            if not output_readable:
+                frame_count = 0
+            status = self._status(
+                item, output_readable=output_readable, reference_readable=readable
+            )
             items.append(
                 {
                     "key": item.item_ref,
@@ -304,12 +335,13 @@ class ReviewController:
         for position, entry in enumerate(blinding, 1):
             item = self.catalogue.item(entry.item_ref)
             frame_count, width, height = self._output_shape(item) if item else (0, 0, 0)
+            available = item is not None and frame_count > 0 and self._output_readable(item)
             items.append(
                 {
                     "key": entry.blinding_code,
                     "label": f"Clip {position} of {len(blinding)}",
-                    "media_available": frame_count > 0,
-                    "frame_count": frame_count,
+                    "media_available": available,
+                    "frame_count": frame_count if available else 0,
                     "width": width,
                     "height": height,
                     "default_frame": 0,
@@ -459,7 +491,7 @@ class ReviewController:
                     scores=payload.get("scores"),
                     unscorable_reason=payload.get("unscorable_reason"),
                 )
-                if item.output_media is None and record.status == "scored":
+                if record.status == "scored" and not self._output_readable(item):
                     raise SubmissionRejected(
                         ["a clip without viewable media can only be unscorable"]
                     )

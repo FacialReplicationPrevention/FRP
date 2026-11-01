@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 
 from frp.review.access import ReviewAccessDenied
-from frp.review.demo import FRAME_COUNT, FRAME_INDICES
-from frp.review.png import PNG_SIGNATURE
+from frp.review.demo import FRAME_COUNT, FRAME_INDICES, HEIGHT, WIDTH
+from frp.review.png import PNG_SIGNATURE, encode_png_rgb
 from frp.review.records import IdentityObservation, QualityRating, read_records, read_sessions
 from frp.review.session import (
     SIMILARITY_NOTICE,
@@ -385,6 +385,78 @@ def test_identity_judgement_needs_a_readable_reference(store: ReviewStore, damag
     else:
         path.unlink()
     _assert_reference_unavailable(store, item_ref)
+
+
+def _damage_output_frame(store: ReviewStore, item_ref: str, damage: str) -> None:
+    """Delete, corrupt or replace one registered output frame after the catalogue is written."""
+    output = store.load_catalogue().item(item_ref).output_media
+    path = store.root / "media" / output / "000008.png"
+    if damage == "delete":
+        path.unlink()
+    elif damage == "corrupt":
+        path.write_bytes(b"not the registered frame")
+    else:  # a valid PNG of the right size whose digest differs from the registered one
+        path.write_bytes(encode_png_rgb(WIDTH, HEIGHT, [b"\x00" * WIDTH * 3] * HEIGHT))
+
+
+DAMAGE = ["delete", "corrupt", "replace"]
+
+
+@pytest.mark.parametrize("damage", DAMAGE)
+def test_identity_judgement_needs_a_readable_output(store: ReviewStore, damage: str) -> None:
+    item_ref = _first_viewable(store)
+    _damage_output_frame(store, item_ref, damage)
+    controller = open_session(store, "identity_inspection")
+    view = next(i for i in controller.session_view()["items"] if i["key"] == item_ref)
+    assert view["item_status"] == "output_unreadable"
+    assert "damaged" in view["status_note"]
+    assert view["frame_count"] == 0
+    assert view["sampled_frames"] == []
+    assert controller.media(item_ref, "frame", 8) is None
+    for judgement in ("same_person", "different_person", "uncertain"):
+        with pytest.raises(SubmissionRejected):
+            controller.submit({"key": item_ref, "judgement": judgement})
+    with pytest.raises(SubmissionRejected):
+        controller.submit({"key": item_ref, "judgement": "not_assessable", "frame_index": 4})
+    controller.submit({"key": item_ref, "judgement": "not_assessable"})
+    (record,) = read_records(store)
+    assert record.item_status == "output_unreadable"
+
+
+def test_output_damaged_after_the_view_is_built_is_still_refused(store: ReviewStore) -> None:
+    item_ref = _first_viewable(store)
+    controller = open_session(store, "identity_inspection")
+    view = next(i for i in controller.session_view()["items"] if i["key"] == item_ref)
+    assert view["item_status"] == "available"
+    _damage_output_frame(store, item_ref, "replace")
+    with pytest.raises(SubmissionRejected):
+        controller.submit({"key": item_ref, "judgement": "same_person"})
+    assert read_records(store) == []
+
+
+@pytest.mark.parametrize("damage", DAMAGE)
+def test_blinded_scoring_needs_a_readable_output(store: ReviewStore, damage: str) -> None:
+    item_ref = _first_viewable(store)
+    controller = open_session(store, "blinded_quality", "RV-02")
+    code = next(
+        e.blinding_code for e in controller.session.blinding or () if e.item_ref == item_ref
+    )
+    view = next(i for i in controller.session_view()["items"] if i["key"] == code)
+    assert view["media_available"]
+    _damage_output_frame(store, item_ref, damage)
+    view = next(i for i in controller.session_view()["items"] if i["key"] == code)
+    assert not view["media_available"]
+    assert view["frame_count"] == 0
+    scores = dict.fromkeys(
+        ("subject_visibility", "temporal_continuity", "motion_plausibility", "visual_artefacts"), 3
+    )
+    with pytest.raises(SubmissionRejected, match="only be unscorable"):
+        controller.submit({"key": code, "status": "scored", "scores": scores})
+    controller.submit(
+        {"key": code, "status": "unscorable", "unscorable_reason": "corrupted_or_unplayable"}
+    )
+    (record,) = read_records(store)
+    assert record.status == "unscorable"
 
 
 def test_invalid_reviewer_role_codes_are_refused(store: ReviewStore) -> None:
