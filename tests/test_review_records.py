@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -25,7 +27,7 @@ from frp.review.records import (
     write_record,
 )
 from frp.review.store import ReviewStore, StoreError
-from tests.review_support import find_item, make_demo_store, open_session
+from tests.review_support import edit_catalogue, find_item, make_demo_store, open_session
 
 
 @pytest.fixture
@@ -184,7 +186,8 @@ def test_withdrawal_scope_locates_and_verifies_deletion_of_one_identity(store: R
     assert {i.reference_media for i in own} <= set(scope.media_ids)
     assert len(scope.record_ids) == 1 + len(own)  # one Mode A + one rating per own clip
     assert scope.session_ids_with_blinding_entries == (quality.session.session_id,)
-    assert withdrawal_remaining(store, scope) == ["media", "records"]
+    everything = ["media", "records", "catalogue", "session_blinding", "access_log"]
+    assert withdrawal_remaining(store, scope) == everything
 
     for media_id in scope.media_ids:
         shutil.rmtree(store.root / "media" / media_id)
@@ -192,5 +195,41 @@ def test_withdrawal_scope_locates_and_verifies_deletion_of_one_identity(store: R
         path = _record_path(store, record_id)
         os.chmod(path, 0o600)
         path.unlink()
-    assert withdrawal_remaining(store, scope) == []
+    # Deleting files alone is not withdrawal: references in the store must also go.
+    assert withdrawal_remaining(store, scope) == ["catalogue", "session_blinding", "access_log"]
     assert len(read_records(store)) == 4 - len(own)  # other identities' ratings remain
+
+    refs = set(scope.item_refs)
+
+    def drop_identity(data: dict[str, Any]) -> None:
+        data["items"] = [i for i in data["items"] if i["item_ref"] not in refs]
+        data["media"] = {k: v for k, v in data["media"].items() if k not in scope.media_ids}
+
+    edit_catalogue(store, drop_identity)
+    assert withdrawal_remaining(store, scope) == ["session_blinding", "access_log"]
+
+    session_path = store.root / "sessions" / f"{quality.session.session_id}.json"
+    session = json.loads(session_path.read_text())
+    session["blinding"] = [e for e in session["blinding"] if e["item_ref"] not in refs]
+    os.chmod(session_path, 0o600)
+    session_path.write_text(json.dumps(session))
+    assert withdrawal_remaining(store, scope) == ["access_log"]
+
+    markers = refs | set(scope.blinding_codes)
+    log = store.root / "access-log.jsonl"
+    lines = log.read_text().splitlines()
+    kept = [line for line in lines if json.loads(line)["item"] not in markers]
+    log.write_text("".join(f"{line}\n" for line in kept))
+    assert withdrawal_remaining(store, scope) == []
+
+
+def test_withdrawal_reports_unverifiable_material_as_remaining(store: ReviewStore) -> None:
+    item_ref, _ = _observe(store, "RV-01", "same_person")
+    catalogue = store.load_catalogue()
+    identity = next(i.identity_index for i in catalogue.items if i.item_ref == item_ref)
+    scope = withdrawal_scope(catalogue, read_records(store), read_sessions(store), identity)
+    (store.root / "catalogue.json").write_text("{not json")
+    (store.root / "access-log.jsonl").write_text("garbage\n")
+    remaining = withdrawal_remaining(store, scope)
+    assert "catalogue" in remaining
+    assert "access_log" in remaining

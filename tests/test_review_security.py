@@ -30,7 +30,7 @@ from frp.review.security import (
     loopback_only_network,
     remote_environment_indicators,
 )
-from frp.review.store import ReviewStore, StoreError
+from frp.review.store import ReviewStore, StoreError, new_media_id
 from tests.review_support import make_demo_store, open_session, rewrite_catalogue
 
 NOW = datetime(2026, 6, 1, tzinfo=UTC)
@@ -247,6 +247,61 @@ def test_unregistered_media_and_indices_are_refused(
     catalogue = store.load_catalogue()
     with pytest.raises(StoreError, match="unknown media or frame"):
         store.read_frame(catalogue, media_id or next(iter(catalogue.media)), index)
+
+
+def _tree(root: Path) -> list[Path]:
+    return sorted(root.rglob("*"))
+
+
+@pytest.mark.parametrize(
+    "media_id",
+    ["../../escape", "../escape", "/var/escape", "m-" + "0" * 32 + "/../../escape", "", ".", ".."],
+)
+def test_traversal_media_ids_are_refused_before_any_filesystem_change(
+    tmp_path: Path, media_id: str
+) -> None:
+    store = ReviewStore(tmp_path / "store")
+    store.create()
+    before = _tree(tmp_path)
+    with pytest.raises(StoreError, match="invalid media id"):
+        store.write_media_frame(media_id, 0, b"x")
+    assert _tree(tmp_path) == before
+    assert not (tmp_path / "escape").exists()
+
+
+def test_invalid_frame_indices_and_private_paths_are_refused_without_side_effects(
+    tmp_path: Path,
+) -> None:
+    store = ReviewStore(tmp_path / "store")
+    store.create()
+    before = _tree(tmp_path)
+    for index in (-1, True, 10_000, "0"):
+        with pytest.raises(StoreError, match="invalid frame index"):
+            store.write_media_frame(new_media_id(), index, b"x")  # type: ignore[arg-type]
+    for relative in (
+        ("..", "x.json"),
+        ("sessions", "../x.json"),
+        ("records", "../../escape", "x.json"),
+        ("records", "a/b", "x.json"),
+        ("/var", "x.json"),
+        ("sessions", "x.png"),
+        ("x.json",),
+        (),
+    ):
+        with pytest.raises(StoreError, match="invalid store"):
+            store.write_private_json(relative, b"{}")
+    assert _tree(tmp_path) == before
+
+
+def test_writes_through_a_symlinked_store_directory_are_refused(tmp_path: Path) -> None:
+    store = ReviewStore(tmp_path / "store")
+    store.create()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (store.root / "media").symlink_to(outside)
+    with pytest.raises(StoreError, match="symbolic link"):
+        store.write_media_frame(new_media_id(), 0, b"x")
+    assert list(outside.iterdir()) == []
 
 
 def test_catalogue_rejects_path_like_media_ids(store: ReviewStore) -> None:

@@ -22,6 +22,7 @@ import secrets
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Final, Literal
 
 from pydantic import (
@@ -52,7 +53,7 @@ IDENTITY_JUDGEMENTS: Final[tuple[IdentityJudgement, ...]] = (
     "uncertain",
     "not_assessable",
 )
-ItemStatus = Literal["available", "output_absent", "media_unavailable"]
+ItemStatus = Literal["available", "output_absent", "media_unavailable", "reference_unavailable"]
 QualityCriterion = Literal[
     "subject_visibility", "temporal_continuity", "motion_plausibility", "visual_artefacts"
 ]
@@ -115,11 +116,11 @@ class IdentityObservation(_RecordBase):
     measurements_revealed: bool
 
     @model_validator(mode="after")
-    def _absent_output_is_not_assessable(self) -> IdentityObservation:
+    def _unviewable_item_is_not_assessable(self) -> IdentityObservation:
         if self.item_status != "available" and self.judgement != "not_assessable":
-            raise ValueError("an item without viewable output can only be not_assessable")
+            raise ValueError("an item without a viewable output and reference is not_assessable")
         if self.item_status != "available" and self.frame_index is not None:
-            raise ValueError("an item without viewable output has no frame to refer to")
+            raise ValueError("an item without a viewable output and reference has no frame")
         return self
 
 
@@ -292,7 +293,7 @@ def new_blinding_key(item_refs: Sequence[str]) -> tuple[BlindingEntry, ...]:
 def prior_unblinded_exposure(
     records: Iterable[ReviewRecord], reviewer_role_code: str, item_refs: Iterable[str]
 ) -> list[str]:
-    """Items this reviewer has already inspected unblinded (Mode A or adjudication)."""
+    """Items this reviewer has already judged unblinded (Mode A or adjudication)."""
     wanted = set(item_refs)
     return sorted(
         {
@@ -302,6 +303,19 @@ def prior_unblinded_exposure(
             and r.reviewer_role_code == reviewer_role_code
             and r.item_ref in wanted
         }
+    )
+
+
+def unblinded_sessions(sessions: Iterable[ReviewSession], reviewer_role_code: str) -> list[str]:
+    """Mode A sessions this reviewer has opened on the store, whether or not anything was saved.
+
+    The session file is written before any media is served, so it is durable evidence of possible
+    unblinded exposure to every item in the store, including views that left no record.
+    """
+    return sorted(
+        s.session_id
+        for s in sessions
+        if s.mode == "identity_inspection" and s.reviewer_role_code == reviewer_role_code
     )
 
 
@@ -346,6 +360,7 @@ class WithdrawalScope:
     media_ids: tuple[str, ...]
     record_ids: tuple[str, ...]
     session_ids_with_blinding_entries: tuple[str, ...]
+    blinding_codes: tuple[str, ...]
 
 
 def withdrawal_scope(
@@ -384,11 +399,18 @@ def withdrawal_scope(
                 if any(e.item_ref in refs for e in s.blinding or ())
             )
         ),
+        blinding_codes=tuple(sorted(codes)),
     )
 
 
 def withdrawal_remaining(store: ReviewStore, scope: WithdrawalScope) -> list[str]:
-    """Verification step after deletion: which classes of withdrawn material still exist."""
+    """Verification step after deletion: which classes of withdrawn material the store still holds.
+
+    An empty list means nothing in *this store* still refers to the identity: no media, records,
+    catalogue items or media entries, session blinding entries or access-log lines. Anything that
+    cannot be read is reported as remaining, never as deleted. Copies outside the store are not
+    checked.
+    """
     remaining = []
     if any((store.root / "media" / media_id).exists() for media_id in scope.media_ids):
         remaining.append("media")
@@ -399,7 +421,41 @@ def withdrawal_remaining(store: ReviewStore, scope: WithdrawalScope) -> list[str
     }
     if stored & set(scope.record_ids):
         remaining.append("records")
+    refs = set(scope.item_refs)
+    if (store.root / "catalogue.json").exists() or (store.root / "catalogue.json").is_symlink():
+        try:
+            catalogue = store.load_catalogue()
+        except StoreError:
+            remaining.append("catalogue")
+        else:
+            if refs & {i.item_ref for i in catalogue.items} or set(scope.media_ids) & set(
+                catalogue.media
+            ):
+                remaining.append("catalogue")
+    try:
+        sessions = read_sessions(store)
+    except StoreError:
+        remaining.append("session_blinding")
+    else:
+        if any(e.item_ref in refs for s in sessions for e in s.blinding or ()):
+            remaining.append("session_blinding")
+    log = store.root / "access-log.jsonl"
+    if (log.exists() or log.is_symlink()) and _log_mentions(log, refs | set(scope.blinding_codes)):
+        remaining.append("access_log")
     return remaining
+
+
+def _log_mentions(path: Path, markers: set[str]) -> bool:
+    """True if any access-log line names a marker, or the log cannot be read and checked."""
+    if path.is_symlink():
+        return True
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line and json.loads(line).get("item") in markers:
+                return True
+    except (OSError, ValueError, AttributeError):
+        return True
+    return False
 
 
 __all__ = [
@@ -428,6 +484,7 @@ __all__ = [
     "prior_unblinded_exposure",
     "read_records",
     "read_sessions",
+    "unblinded_sessions",
     "withdrawal_remaining",
     "withdrawal_scope",
     "write_record",

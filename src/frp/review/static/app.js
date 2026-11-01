@@ -123,7 +123,7 @@
     clear(itemsNav);
     session.items.forEach((item, position) => {
       const badge = session.mode === 'identity_inspection'
-        ? item.item_status.replace('_', ' ')
+        ? item.item_status.replaceAll('_', ' ')
         : (item.media_available ? 'clip' : 'media unavailable');
       itemsNav.appendChild(el('button', {
         type: 'button', 'data-position': position, onclick: () => onSelect(position),
@@ -167,7 +167,7 @@
     const outputPanel = el('section', { className: 'panel' }, [el('h2', { text: 'Generated output' })]);
     const viewports = [referenceViewport];
     let thumbButtons = [];
-    if (item.item_status === 'available' && item.frame_count > 0) {
+    if (item.frame_count > 0) {
       activePlayer = createPlayer(item, session.playback_fps, (frame) => {
         for (const button of thumbButtons) {
           button.setAttribute('aria-pressed', String(Number(button.dataset.index) === frame));
@@ -178,7 +178,7 @@
       viewports.push(activePlayer.viewport);
     } else {
       outputPanel.appendChild(el('div', { className: 'viewport' },
-        [el('div', { className: 'missing', text: 'No output to display (' + item.item_status.replace('_', ' ') + ')' })]));
+        [el('div', { className: 'missing', text: 'No output to display (' + item.item_status.replaceAll('_', ' ') + ')' })]));
     }
     main.appendChild(zoomControl(viewports));
     main.appendChild(el('div', { className: 'panels' }, [referencePanel, outputPanel]));
@@ -249,7 +249,7 @@
     const options = session.judgements.map((judgement) => el('label', {}, [
       el('input', Object.assign({ type: 'radio', name: 'judgement', value: judgement },
         !available && judgement !== 'not_assessable' ? { disabled: '' } : {})),
-      document.createTextNode(' ' + judgement.replace('_', ' ') + ' '),
+      document.createTextNode(' ' + judgement.replaceAll('_', ' ') + ' '),
     ]));
     const frameOnly = el('input', Object.assign({ type: 'checkbox' }, available ? {} : { disabled: '' }));
     const notes = el('textarea', {

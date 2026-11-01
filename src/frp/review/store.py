@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 from collections import Counter
 from collections.abc import Mapping
@@ -65,6 +66,9 @@ CATALOGUE_SCHEMA_VERSION: Final = "review-catalogue-0.1-draft"
 MAX_CATALOGUE_BYTES: Final = 8 * 1024 * 1024
 MAX_RECORD_BYTES: Final = 64 * 1024
 MAX_FRAMES: Final = 1024
+_DIRECTORY_COMPONENT: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+_FILE_NAME: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json$")
+_MEDIA_ID: Final = re.compile(r"^m-[0-9a-f]{32}$")
 
 StoreId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")]
 MediaId = Annotated[str, StringConstraints(pattern=r"^m-[0-9a-f]{32}$")]
@@ -313,13 +317,22 @@ class ReviewStore:
         self.root = Path(root)
 
     def _directory(self, *parts: str) -> Path:
-        path = self.root.joinpath(*parts)
-        path.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if path.is_symlink() or not path.resolve().is_relative_to(self.root.resolve()):
+        """Create (or reuse) a directory below the store, validating every component first."""
+        if not parts or not all(
+            isinstance(part, str) and _DIRECTORY_COMPONENT.fullmatch(part) for part in parts
+        ):
+            raise StoreError(["invalid store path component"])
+        if self.root.is_symlink() or not self.root.is_dir():
+            raise StoreError(["the review store directory is missing or a symbolic link"])
+        path = self.root
+        for part in parts:
+            path = path / part
+            if path.is_symlink() or (path.exists() and not path.is_dir()):
+                raise StoreError(["store directory is a symbolic link or outside the store"])
+            path.mkdir(mode=0o700, exist_ok=True)
+            os.chmod(path, 0o700)
+        if not path.resolve().is_relative_to(self.root.resolve()):
             raise StoreError(["store directory is a symbolic link or outside the store"])
-        relative = path.relative_to(self.root)
-        for directory in (relative, *relative.parents):
-            os.chmod(self.root / directory, 0o700)
         return path
 
     def create(self) -> None:
@@ -335,6 +348,10 @@ class ReviewStore:
 
     def write_media_frame(self, media_id: str, index: int, png: bytes) -> str:
         """Write one frame of new media exclusively and return its SHA-256."""
+        if not isinstance(media_id, str) or not _MEDIA_ID.fullmatch(media_id):
+            raise StoreError(["invalid media id"])
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < MAX_FRAMES:
+            raise StoreError(["invalid frame index"])
         directory = self._directory("media", media_id)
         _write_exclusive(directory / f"{index:06d}.png", png)
         return hashlib.sha256(png).hexdigest()
@@ -394,6 +411,8 @@ class ReviewStore:
 
     def write_private_json(self, relative: tuple[str, ...], payload: bytes) -> None:
         """Write a new private file under the store exclusively (sessions and records)."""
+        if not relative or not _FILE_NAME.fullmatch(relative[-1]):
+            raise StoreError(["invalid store file name"])
         directory = self._directory(*relative[:-1])
         _write_exclusive(directory / relative[-1], payload)
         os.chmod(directory / relative[-1], 0o400)

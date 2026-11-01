@@ -6,13 +6,15 @@ directly. The browser only ever receives what :meth:`ReviewController.session_vi
 
 **Mode A — identity inspection (unblinded).** Items are keyed by opaque item references and shown
 with their reference still, every sampled frame, a later-frame default and, only on request, the
-automated detection statuses and *uncalibrated* similarities. Failed, unexecuted and
-media-unavailable items are shown with their status and can only be judged ``not_assessable``.
+automated detection statuses and *uncalibrated* similarities. Failed, unexecuted,
+media-unavailable and reference-unavailable (missing or unreadable original) items are shown with
+their status and can only be judged ``not_assessable``.
 
 **Mode B — blinded quality.** Only succeeded attempts, keyed by fresh session-specific blinding
 codes in a randomised order. No reference, no score, no detection status, no run id, item
 reference, attempt, outcome or conditioning information is ever included. A reviewer who has
-already inspected any of these items in Mode A is refused.
+opened any Mode A session on the store (saved judgement or not) is refused, and a Mode B session
+stops accepting ratings if its reviewer opens Mode A concurrently.
 """
 
 from __future__ import annotations
@@ -50,6 +52,8 @@ from frp.review.records import (
     new_session_id,
     prior_unblinded_exposure,
     read_records,
+    read_sessions,
+    unblinded_sessions,
     write_record,
     write_session,
 )
@@ -111,18 +115,26 @@ def sampled_frames(sampled: Sequence[int], frame_count: int) -> list[dict[str, A
 
 
 def item_status(item: ReviewItem) -> ItemStatus:
+    """Status from the catalogue alone; the controller also checks the reference is readable."""
     if item.outcome != "succeeded":
         return "output_absent"
-    return "available" if item.output_media is not None else "media_unavailable"
+    if item.output_media is None:
+        return "media_unavailable"
+    return "available" if item.reference_media is not None else "reference_unavailable"
 
 
-def _status_note(item: ReviewItem) -> str:
+def _status_note(item: ReviewItem, status: ItemStatus) -> str:
     if item.outcome == "failed":
         return f"Generation failed ({item.failure_detail}). No output exists; nothing is scored."
     if item.outcome == "not_executed":
         return f"Run not executed ({item.unexecuted_reason}). No output exists."
-    if item.output_media is None:
+    if status == "media_unavailable":
         return "Output media unavailable in this store. Nothing is substituted."
+    if status == "reference_unavailable":
+        return (
+            "Original reference unavailable or unreadable. Identity cannot be compared; "
+            "only not assessable can be recorded."
+        )
     return "Output available."
 
 
@@ -167,11 +179,13 @@ class ReviewController:
             refs = [i.item_ref for i in catalogue.items if i.outcome == "succeeded"]
             if not refs:
                 raise ReviewAccessDenied(["there are no generated clips to rate"])
-            if exposed := prior_unblinded_exposure(read_records(store), reviewer_role_code, refs):
+            if prior_unblinded_exposure(
+                read_records(store), reviewer_role_code, refs
+            ) or unblinded_sessions(read_sessions(store), reviewer_role_code):
                 raise ReviewAccessDenied(
                     [
-                        f"this reviewer has already inspected {len(exposed)} of these clips "
-                        "unblinded (Mode A); a different reviewer must do the blinded rating"
+                        "this reviewer has opened an unblinded (Mode A) session or judged these "
+                        "clips unblinded; a different reviewer must do the blinded rating"
                     ]
                 )
             blinding = new_blinding_key(refs)
@@ -220,6 +234,31 @@ class ReviewController:
         entry = self.catalogue.media.get(item.output_media) if item.output_media else None
         return (entry.frame_count, entry.width, entry.height) if entry else (0, 0, 0)
 
+    def _reference_readable(self, item: ReviewItem) -> bool:
+        if item.reference_media is None:
+            return False
+        try:
+            self.store.read_frame(self.catalogue, item.reference_media, 0)
+        except StoreError:
+            return False
+        return True
+
+    def _status(self, item: ReviewItem, reference_readable: bool | None = None) -> ItemStatus:
+        status = item_status(item)
+        if reference_readable is None:
+            reference_readable = self._reference_readable(item)
+        if status == "available" and not reference_readable:
+            return "reference_unavailable"
+        return status
+
+    def _blinding_compromised(self) -> bool:
+        """Whether this reviewer has opened Mode A on the store, even concurrently with this one."""
+        try:
+            sessions = read_sessions(self.store)
+        except StoreError:
+            return True
+        return bool(unblinded_sessions(sessions, self.session.reviewer_role_code))
+
     def _banners(self) -> list[str]:
         return [SIMULATED_BANNER if self.catalogue.simulated else PRIVATE_BANNER]
 
@@ -229,14 +268,16 @@ class ReviewController:
         items = []
         for position, item in enumerate(self.catalogue.items, 1):
             frame_count, width, height = self._output_shape(item)
+            readable = self._reference_readable(item)
+            status = self._status(item, readable)
             items.append(
                 {
                     "key": item.item_ref,
                     "label": f"Item {position} of {len(self.catalogue.items)}",
                     "outcome": item.outcome,
-                    "item_status": item_status(item),
-                    "status_note": _status_note(item),
-                    "reference_available": item.reference_media is not None,
+                    "item_status": status,
+                    "status_note": _status_note(item, status),
+                    "reference_available": readable,
                     "frame_count": frame_count,
                     "width": width,
                     "height": height,
@@ -396,12 +437,19 @@ class ReviewController:
                     record_kind="identity_observation",
                     instrument_version=IDENTITY_INSTRUMENT_VERSION,
                     item_ref=item.item_ref,
-                    item_status=item_status(item),
+                    item_status=self._status(item),
                     frame_index=frame_index,
                     judgement=payload.get("judgement"),
                     measurements_revealed=revealed,
                 )
             else:
+                if self._blinding_compromised():
+                    raise SubmissionRejected(
+                        [
+                            "this reviewer has opened an unblinded (Mode A) session on this "
+                            "store; blinded ratings are no longer accepted from them"
+                        ]
+                    )
                 record = QualityRating(
                     **common,
                     record_kind="blinded_quality_rating",

@@ -8,18 +8,29 @@ import logging
 import re
 import shutil
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from frp.cli import EXIT_INVALID, EXIT_OK, EXIT_OUTPUT, EXIT_USAGE, main
+from frp.review.access import REVIEW_GATES, ReviewAccessGrant, ReviewAccessRequest
 from frp.review.demo import SIMULATED_NOTICE as DEMO_NOTICE
-from frp.review.png import PNG_SIGNATURE
+from frp.review.png import PNG_SIGNATURE, encode_png_rgb, sanitise_png
 from frp.review.security import CONTENT_SECURITY_POLICY, loopback_only_network
 from frp.review.server import ReviewApp, ReviewServer, load_asset
-from frp.review.store import ReviewStore
-from tests.review_support import find_item, make_demo_store, open_session, rewrite_catalogue
+from frp.review.session import ReviewController, default_frame_index, sampled_frames
+from frp.review.store import ReviewStore, new_media_id
+from tests.review_support import (
+    edit_catalogue,
+    find_item,
+    make_demo_store,
+    open_session,
+    rewrite_catalogue,
+)
 
+NOW = datetime(2026, 6, 1, tzinfo=UTC)
 HOST = {"Host": "127.0.0.1:8765"}
 POST = {
     **HOST,
@@ -121,6 +132,68 @@ def test_media_and_measurements_routes(app: ReviewApp) -> None:
     assert reference.status == 200
     measured = app.handle("GET", _url(app, f"/api/items/{item.item_ref}/measurements"), HOST)
     assert json.loads(measured.body)["calibration_status"] == "uncalibrated"
+
+
+class _TestGrant:
+    """Test-only provider for a temporary store of procedural frames; never shipped."""
+
+    def authorise(self, request: ReviewAccessRequest) -> ReviewAccessGrant:
+        return ReviewAccessGrant(
+            grant_id="private:grant/test",
+            store_id=request.store_id,
+            storage_approval_reference="private:storage/test",
+            modes=(request.mode,),
+            reviewer_role_codes=(request.reviewer_role_code,),
+            gates=dict.fromkeys(REVIEW_GATES, "private:gate/test"),
+            expires_at=NOW + timedelta(hours=1),
+        )
+
+
+def test_selecting_frame_80_of_an_81_frame_clip_returns_that_exact_frame(tmp_path: Path) -> None:
+    store = make_demo_store(tmp_path / "store")
+    # Procedural frames whose colour encodes the index (no faces).
+    frames = [encode_png_rgb(4, 2, [bytes((i, 255 - i, 3 * i % 256)) * 4] * 2) for i in range(81)]
+    media_id = new_media_id()
+    digests = [store.write_media_frame(media_id, i, png) for i, png in enumerate(frames)]
+    item_ref = find_item(store.load_catalogue(), outcome="succeeded", has_output=True).item_ref
+
+    def use_long_clip(data: dict[str, Any]) -> None:
+        data["media"][media_id] = {
+            "kind": "frame_sequence",
+            "width": 4,
+            "height": 2,
+            "frame_sha256": digests,
+        }
+        for item in data["items"]:
+            if item["item_ref"] == item_ref:
+                item["output_media"] = media_id
+        data["content_class"] = "identifiable"
+        data["storage_approval_reference"] = "private:storage/test"
+
+    edit_catalogue(store, use_long_clip)
+    controller = ReviewController.open(
+        store,
+        mode="identity_inspection",
+        reviewer_role_code="RV-01",
+        provider=_TestGrant(),
+        environ={},
+        now=NOW,
+    )
+    view = next(i for i in controller.session_view()["items"] if i["key"] == item_ref)
+    assert view["frame_count"] == 81
+
+    expected = sanitise_png(frames[80], expected_width=4, expected_height=2)
+    assert expected != sanitise_png(frames[79], expected_width=4, expected_height=2)
+    assert store.read_frame(store.load_catalogue(), media_id, 80) == expected
+    assert controller.media(item_ref, "frame", 80) == expected
+    app = ReviewApp(controller)
+    served = app.handle("GET", _url(app, f"/media/{item_ref}/frame/80"), HOST)
+    assert served.status == 200
+    assert served.body == expected
+    assert app.handle("GET", _url(app, f"/media/{item_ref}/frame/81"), HOST).status == 404
+
+    assert default_frame_index((0, 20, 40, 60, 80), 81) == 20
+    assert [f["index"] for f in sampled_frames((0, 20, 40, 60, 80), 81)] == [0, 20, 40, 60, 80]
 
 
 def test_blinded_app_never_serves_references_or_measurements(store: ReviewStore) -> None:
@@ -302,6 +375,14 @@ assert.strictEqual(s.frame(), 10);
 const single = p.createFrameState(1, 0);
 assert.ok(!single.play());
 assert.strictEqual(single.step(1), 0);
+
+const long = p.createFrameState(81, 20);   // 81-frame clip, later-frame default
+assert.strictEqual(long.frame(), 20);
+assert.strictEqual(long.select(80), 80);
+assert.strictEqual(long.frame(), 80);
+assert.strictEqual(long.step(1), 80);
+assert.strictEqual(long.select(81), 80);
+assert.strictEqual(long.step(-1), 79);
 console.log('player-ok');
 """
 

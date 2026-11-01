@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -19,7 +20,7 @@ from frp.review.session import (
     sampled_frames,
 )
 from frp.review.store import ReviewStore
-from tests.review_support import find_item, make_demo_store, open_session
+from tests.review_support import edit_catalogue, find_item, make_demo_store, open_session
 
 
 @pytest.fixture
@@ -314,6 +315,76 @@ def test_unblinded_reviewer_cannot_rate_the_same_clips_blinded(store: ReviewStor
     with pytest.raises(ReviewAccessDenied, match="different reviewer"):
         open_session(store, "blinded_quality", "RV-01")
     assert open_session(store, "blinded_quality", "RV-02").mode == "blinded_quality"
+
+
+def test_viewing_mode_a_without_saving_still_blocks_blinded_rating(store: ReviewStore) -> None:
+    identity = open_session(store, "identity_inspection", "RV-01")
+    item = find_item(identity.catalogue, outcome="succeeded", has_output=True)
+    assert identity.media(item.item_ref, "reference") is not None
+    assert identity.media(item.item_ref, "frame", 4) is not None
+    identity.close()
+    assert read_records(store) == []  # nothing saved, but the session is durable evidence
+    with pytest.raises(ReviewAccessDenied, match="different reviewer"):
+        open_session(store, "blinded_quality", "RV-01")
+
+
+def test_concurrent_mode_a_session_stops_blinded_ratings(store: ReviewStore) -> None:
+    quality = open_session(store, "blinded_quality", "RV-01")
+    code = quality.session_view()["items"][0]["key"]
+    unscorable = {"key": code, "status": "unscorable", "unscorable_reason": "other"}
+    quality.submit(unscorable)
+    open_session(store, "identity_inspection", "RV-01")
+    with pytest.raises(SubmissionRejected, match="unblinded"):
+        quality.submit(unscorable)
+    assert len(read_records(store)) == 1  # the rating made before exposure is kept
+    other = open_session(store, "blinded_quality", "RV-02")
+    other.submit({**unscorable, "key": other.session_view()["items"][0]["key"]})
+
+
+def _first_viewable(store: ReviewStore) -> str:
+    return find_item(store.load_catalogue(), outcome="succeeded", has_output=True).item_ref
+
+
+def _assert_reference_unavailable(store: ReviewStore, item_ref: str) -> None:
+    controller = open_session(store, "identity_inspection")
+    view = next(i for i in controller.session_view()["items"] if i["key"] == item_ref)
+    assert view["item_status"] == "reference_unavailable"
+    assert not view["reference_available"]
+    assert "reference unavailable" in view["status_note"].lower()
+    assert view["frame_count"] == FRAME_COUNT  # the output itself is still shown
+    assert controller.media(item_ref, "reference") is None
+    for judgement in ("same_person", "different_person", "uncertain"):
+        with pytest.raises(SubmissionRejected):
+            controller.submit({"key": item_ref, "judgement": judgement})
+    with pytest.raises(SubmissionRejected):
+        controller.submit({"key": item_ref, "judgement": "not_assessable", "frame_index": 4})
+    controller.submit({"key": item_ref, "judgement": "not_assessable"})
+    (record,) = read_records(store)
+    assert record.item_status == "reference_unavailable"
+
+
+def test_identity_judgement_needs_a_registered_reference(store: ReviewStore) -> None:
+    item_ref = _first_viewable(store)
+
+    def drop_reference(data: dict[str, Any]) -> None:
+        for item in data["items"]:
+            if item["item_ref"] == item_ref:
+                item["reference_media"] = None
+
+    edit_catalogue(store, drop_reference)
+    _assert_reference_unavailable(store, item_ref)
+
+
+@pytest.mark.parametrize("damage", ["corrupt", "delete"])
+def test_identity_judgement_needs_a_readable_reference(store: ReviewStore, damage: str) -> None:
+    item_ref = _first_viewable(store)
+    reference = store.load_catalogue().item(item_ref).reference_media
+    path = store.root / "media" / reference / "000000.png"
+    if damage == "corrupt":
+        path.write_bytes(b"not the registered image")
+    else:
+        path.unlink()
+    _assert_reference_unavailable(store, item_ref)
 
 
 def test_invalid_reviewer_role_codes_are_refused(store: ReviewStore) -> None:

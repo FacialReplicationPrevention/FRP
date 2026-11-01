@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +28,13 @@ def open_session(
 
 def rewrite_catalogue(store: ReviewStore, **update: Any) -> None:
     """Replace the catalogue file (tests only; the store API never replaces it)."""
+    edit_catalogue(store, lambda data: data.update(update))
+
+
+def edit_catalogue(store: ReviewStore, edit: Callable[[dict[str, Any]], None]) -> None:
+    """Apply ``edit`` to the catalogue's JSON and replace the file (tests only)."""
     data = json.loads(store.load_catalogue().model_dump_json())
-    data.update(update)
+    edit(data)
     path = store.root / "catalogue.json"
     os.remove(path)
     path.write_text(json.dumps(data), encoding="utf-8")
