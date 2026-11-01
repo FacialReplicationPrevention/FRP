@@ -545,16 +545,118 @@ frame indices); and the seven human approvals in [GPU readiness](gpu-readiness.m
 hash check is not atomic with loading (files could change between verification and load on a
 shared filesystem), and the network guard does not cover subprocesses.
 
+## Baseline evaluation and private review (Milestone 004, PR 3A)
+
+Modules: [`frp.baseline.evaluation`](../src/frp/baseline/evaluation.py),
+[`frp.baseline.aggregation`](../src/frp/baseline/aggregation.py) and
+[`frp.review`](../src/frp/review/). Specification: [private review viewer](private-review-viewer.md).
+**CPU-only infrastructure. No real evaluator, real media, GPU, inference or measurement exists;
+the only content this release can open is a procedurally generated synthetic demo.**
+
+### Evaluation
+
+`evaluate_baseline_results(results, plan, face_evaluator=..., quality_evaluator=..., manifest=None)`
+takes an **unevaluated** `BaselineResultSet` and returns a *new* validated one; the input is never
+modified. Only succeeded attempts are evaluated, through the existing `FaceIdentityEvaluator` and
+`VideoQualityEvaluator` interfaces and the same per-frame contract as the orchestrator (all five
+face statuses; `similarity` only for `valid`). Failed attempts and unexecuted runs are carried over
+as `not_evaluated`. It refuses: results that already carry evaluator info (no re-evaluation in
+place); `smoke` results (technical claims only); and any mismatch between the evaluators'
+`simulated` flags and the results' flag, so a mock score can never stand in for a real evaluator
+or the reverse. Evaluator exceptions become `error` statuses without their messages.
+
+### Descriptive baseline aggregation
+
+`aggregate_baseline(results, plan, *, min_valid_later_frames, attempt_selection)` is separate from
+the A/B/C/D `frp.aggregation.aggregate`, which is unchanged. It returns a `BaselineSummary` with:
+
+- **Coverage with denominators**: face-status counts over every declared frame (including
+  `not_evaluated` frames of failed and unexecuted runs), frame 0 and later frames counted separately.
+- **Per clip** (every attempt, and each unexecuted run): frame-0 status/similarity; the later-frame
+  median over `valid` later frames, or a reason it is missing (`not_evaluated`,
+  `insufficient_valid_later_frames`, `no_later_frames_sampled`); the sampled trajectory; frame 0
+  minus the later median when both exist; quality status and score, kept separate.
+- **Identity first**: clip values → per-identity medians → medians across identities, each with
+  the number of contributing identities.
+- **No invented choices**: `min_valid_later_frames` and `attempt_selection` (`first_attempt` or
+  `last_attempt`) must be passed explicitly and are recorded, because Experiment 003 decisions 2
+  and 4 are open. No threshold, calibration, interval or test is computed
+  (`calibration_status: uncalibrated`); the `UncertaintyEstimator` hook is optional and none ships.
+
+### Private review store
+
+A review store is a directory in **approved private storage** (never in a repository; `.gitignore`
+excludes common names) holding `catalogue.json`, `media/<media_id>/<NNNNNN>.png`, `sessions/`,
+`records/` and `access-log.jsonl`. `build_catalogue` creates one item per attempt and per
+unexecuted run, in plan order, from a plan-verified result set; media are registered by opaque
+random ids with per-frame SHA-256 digests. Clips are stored as one PNG per frame so the viewer can
+show exact frame indices without a video-container parser. Every read checks the id against the
+catalogue, refuses symlinks and paths outside the store, checks the digest and passes the file
+through `sanitise_png` (structure and CRC checks; ancillary metadata chunks dropped). Files are
+written once (exclusive create) with owner-only permissions. Converting real Wan outputs into a
+store is **not implemented**; it belongs to the approved private environment.
+
+### Viewer
+
+`frp review STORE --mode identity|quality --reviewer ROLE_CODE [--port N]` serves a bundled
+HTML/JS/CSS page on `127.0.0.1` behind a per-session token, with outbound connections and name
+lookups blocked in-process. See [private-review-viewer.md](private-review-viewer.md#7-implementation-status-milestone-004-pr-3a)
+for Mode A/B behaviour and the V1–V12 mapping. Access is fail-closed:
+
+- `content_class: synthetic` stores open only if **every** registered frame equals a frame the
+  demo generator produces, so the label cannot be used to show real media.
+- `content_class: identifiable` stores additionally need a storage approval reference, no
+  remote/hosted/CI environment indicator, a store outside any git working tree and not
+  group/world-accessible, and a private, unexpired `ReviewAccessGrant`. Only
+  `DenyAllReviewAccess` ships, so identifiable stores **cannot be opened** by this release.
+
+### Synthetic demonstration
+
+~~~bash
+frp review-demo /tmp/frp-review-demo          # creates a new store; refuses a non-empty directory
+frp review /tmp/frp-review-demo --mode identity --reviewer RV-01
+frp review /tmp/frp-review-demo --mode quality --reviewer RV-02
+~~~
+
+The demo plans a 3-identity baseline, fabricates *simulated* attempts (successes, a retried
+failure, a non-transient failure, an unexecuted run, an output whose media are not imported, a
+clip rated unscorable), evaluates them with SHA-256-derived fixture evaluators marked `simulated`,
+aggregates them, and writes coloured rectangles and a moving square as "reference" and "video".
+Everything is labelled **SIMULATED DATA — NOT SCIENTIFIC EXPERIMENTAL EVIDENCE**. Use a
+directory outside the repository. Opening the demo from a Codespace is acceptable only because it
+is synthetic. The viewer rejects any request whose `Host` is not a loopback name, so a
+browser-based forwarded URL (e.g. `*.app.github.dev`) is refused; a forward to `localhost` from VS
+Code desktop works. Real media must never be opened this way (V2), and the access check refuses
+identifiable stores in remote environments regardless.
+
+### How this connects to a future live baseline
+
+1. An approved, separately reviewed live `Wan21Backend` and private `PrivateAuthorisation` provider
+   (neither exists) let `execute_baseline_plan` produce a `simulated: false` unevaluated
+   `BaselineResultSet` in approved private storage.
+2. Separately reviewed real `FaceIdentityEvaluator`/`VideoQualityEvaluator` adapters (pinned
+   revisions, licences, settings) are applied with `evaluate_baseline_results`, in an approved
+   private environment. None exists; the simulated-flag check prevents fixture evaluators.
+3. `aggregate_baseline` is run with values for decisions 2 and 4 fixed in a reviewed analysis plan;
+   calibration from identity-disjoint controls and an uncertainty method are still to be added.
+4. A private import step (not implemented) converts the authorised outputs and consented
+   references into a review store with an approved storage reference; a private
+   `ReviewAccessProvider` (not implemented, separately reviewed) issues grants citing the consent
+   and storage gates. Reviewers then use Mode A and, separately, Mode B on the reviewer machine.
+
 ## Known limitations
 
 - No real inference, image transform, face detection, identity evaluation or video-quality
-  scoring is implemented. Only simulated adapters exist; their outputs are fixtures.
+  scoring is implemented. Only simulated adapters exist; their outputs are fixtures. The baseline
+  evaluation pipeline and review viewer are tested only with synthetic evaluators and
+  procedurally generated, non-biometric frames.
 - Simulated reports validate software contracts and denominators, not scientific outcomes.
   Fixture similarity/quality values do not resemble real recogniser or rubric distributions.
 - No calibration, match thresholds, uncertainty intervals, interaction analysis or
   inferential statistics are implemented.
 - Result records are validated in memory and via `parse_result_set_json`; there is no private
-  storage integration, retention policy or CLI for persisting/reloading records.
+  storage integration, retention policy or CLI for persisting/reloading result records. (Review
+  stores hold review records and media, not result sets.)
 - Equality of generation controls is guaranteed by construction from a single manifest; the
   harness cannot yet verify that a future executor actually applies them.
 - With few identities, aggregate medians can approximate individual values. Real-data public

@@ -1,7 +1,7 @@
 # Experiment 003 — Wan 2.1 I2V single-condition baseline (design only)
 
 **Date:** 2026-10-30
-**Status:** Design. PR 2 implements the CPU-testable manifest, plan and result contracts and a mock-tested executor boundary (see [Implementation status](#implementation-status-milestone-004-pr-2)); the design itself is **not reviewed**, live execution is **disabled**, no model has been run and nothing has been measured.
+**Status:** Design. PR 2 implements the CPU-testable manifest, plan and result contracts and a mock-tested executor boundary (see [Implementation status](#implementation-status-milestone-004-pr-2)); PR 3A adds CPU-only evaluation, descriptive aggregation and the private review viewer (see [PR 3A status](#implementation-status-milestone-004-pr-3a)). The design itself is **not reviewed**, live execution is **disabled**, no model has been run and nothing has been measured.
 **Milestone:** [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) (Roadmap Phase 3), PRs 1 and 2 of 3.
 **Builds on:** [Experiment 001](001-baseline-protocol.md) (generic baseline plan, unchanged), [Research 001](../research/001-identity-replication-measurement.md), [Research 005](../research/005-wan-model-candidates.md).
 **Distinct from:** [Experiment 002](002-conditioning-ablation-protocol.md), the Wan 2.1 CLIP × VAE A/B/C/D diagnostic ablation. That design, its manifest schema 1.0 and result protocol `wan2.1-i2v-clip-vae-2x2` are unchanged.
@@ -114,6 +114,16 @@ Implemented in [`frp.baseline`](../src/frp/baseline/) and described in the [harn
 - **Human go/no-go input.** Defined as a private `PrivateAuthorisation` interface with a deny-all default; no provider that grants anything exists, so execution stays disabled.
 - **Retries.** Only transient failures are retried, up to `max_attempts` (default 1), each as a new attempt; every attempt is kept. The attempt-selection rule for analysis (decision 4) is still open.
 - **Not done:** the live backend, evaluators, calibration, any measurement. Prompt extension is now locked in the baseline manifest only (decision 6: not extended to schema 1.0).
+
+## Implementation status (Milestone 004, PR 3A)
+
+CPU-only and tested on synthetic, non-biometric fixtures; see the [harness guide](../docs/harness.md#baseline-evaluation-and-private-review-milestone-004-pr-3a) and the [review viewer](../docs/private-review-viewer.md#7-implementation-status-milestone-004-pr-3a).
+
+- **§4–5 evaluation.** `evaluate_baseline_results` applies face and quality evaluators to succeeded attempts after generation, keeps failed and unexecuted runs as `not_evaluated`, never evaluates `smoke` results, and refuses simulated evaluators on non-simulated results (and the reverse).
+- **§5 items 1–5.** `aggregate_baseline` reports coverage with denominators, frame 0 separately, the later-frame median, the trajectory and frame 0 minus later median, quality independently, and clip → identity → role medians. **Decisions 2 and 4 remain open:** the minimum valid later frames and the attempt-selection rule are required caller inputs and are recorded with the summary; nothing preregisters them.
+- **§5 items 6–7 not implemented.** No calibration, threshold, interval or variability analysis; similarities are reported as `uncalibrated`.
+- **Blinded human rubric (§5 item 4b).** Mode B of the viewer records ratings under `frp-blinded-quality-rubric-0.1-draft`, a draft that has not been validated and excludes prompt adherence. Mode A records identity observations separately; the two are never combined.
+- **Not done:** real evaluator adapters, import of real outputs into a review store, a private review-access provider, agreement statistics, any measurement.
 
 ## Limitations
 

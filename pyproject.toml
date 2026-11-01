@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "frp"
-version = "0.3.0"
-description = "FRP CPU-only experiment harness: manifest validation, A/B/C/D planning, a simulated execution/evaluation/reporting pipeline and offline model provenance validation."
+version = "0.4.0"
+description = "FRP CPU-only experiment harness: manifest validation, A/B/C/D planning, a simulated execution/evaluation/reporting pipeline, offline model provenance validation, baseline evaluation contracts and a local-only private review viewer."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

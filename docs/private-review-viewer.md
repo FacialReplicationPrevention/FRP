@@ -1,6 +1,6 @@
-# Private visual-review specification (design only)
+# Private visual-review specification
 
-**Status:** Specification for a future PR (Milestone 004, PR 3). **No viewer has been built, and no real media is used in tests or this repository.**
+**Status:** Specification (Milestone 004, PR 1) with a CPU-only implementation in Milestone 004 PR 3A ([section 7](#7-implementation-status-milestone-004-pr-3a)). **The implementation can open only procedurally generated synthetic content; no real media has been reviewed, and no real media is used in tests or this repository.**
 **Issue:** [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9). **Related:** [Experiment 003](../experiments/003-wan21-i2v-baseline-design.md), [GPU readiness protocol](gpu-readiness.md).
 
 Human review supplements the automated face measurements: it can reveal failures that scores hide (a different-looking person with a high score, a ruined video with a plausible score). Observations are descriptive and are **not proof of protection or of identity**.
@@ -62,16 +62,64 @@ The requirements below are normative for PR 3 and checkable in review.
 | V11 | **Fail closed.** The viewer refuses to open media if its configuration enables any network egress, if the storage location is unapproved, or if the approval reference is missing. |
 | V12 | **Untrusted input.** Media and metadata are untrusted; parsing happens in a constrained process, and file names or metadata are never interpreted as code or markup. |
 
-## 6. Verification plan for PR 3 (not done)
+## 6. Verification plan
 
-- Unit tests with generated synthetic frames (e.g. flat colour or procedural patterns, not faces) for frame selection, later-frame default, status display, blinded mode hiding scores and ids, record immutability and disagreement handling.
-- A test that the application opens no non-loopback sockets and makes no outbound requests, and that the page assets reference no external origin.
-- A test that logs and records contain no path, pseudonym or media bytes.
-- A privacy review of real-data screenshots **before** any appear anywhere; none are committed.
+- [x] Unit tests with generated synthetic frames (procedural patterns, not faces) for frame selection, later-frame default, status display, blinded mode hiding scores and ids, record immutability and disagreement handling. *(PR 3A; `tests/test_review_*.py`.)*
+- [x] A test that the application binds only to loopback, refuses outbound connections and name lookups, and that the page assets reference no external origin. *(PR 3A; in-process checks only.)*
+- [x] A test that logs and records contain no path, pseudonym or media bytes. *(PR 3A.)*
+- [ ] A privacy review of real-data screenshots **before** any appear anywhere; none are committed. *(Not applicable until real media is authorised.)*
+- [ ] Browser-level testing of the page (the player's frame logic is tested under Node.js when available; no browser automation runs in CI).
 
 ## Residual risks and open questions
 
 - Human judgements of identity are subjective, vary across raters and with image conditions, and are not demographically neutral.
 - The number of reviewers and items needed for useful agreement estimates is undetermined.
 - Whether the reviewer machine, rather than a stricter environment, is acceptable must be decided under the storage and consent gates.
-- The choice of desktop application versus loopback web page is left to PR 3 and must satisfy V1–V12.
+- PR 3A chose a loopback web page (Python standard-library HTTP server, bundled HTML/JS/CSS) over a desktop application; section 7 maps it to V1–V12.
+
+## 7. Implementation status (Milestone 004, PR 3A)
+
+Package [`frp.review`](../src/frp/review/); commands `frp review-demo` and `frp review` (see the [harness guide](harness.md#baseline-evaluation-and-private-review-milestone-004-pr-3a)). **Only `DenyAllReviewAccess` ships, so stores labelled identifiable are always refused; the only content that can be opened is the procedurally generated synthetic demo.**
+
+### Modes as implemented
+
+- **Mode A (identity inspection).** Reference still on the left, output on the right. Play, pause, previous/next frame, a scrubber, and sampled-frame thumbnails at the catalogue's frame indices. The default is the first sampled later frame (never frame 0 automatically); frame 0 is labelled as the conditioned first frame. Zoom (1–4×) is applied to both panels. Automated detection statuses and similarities are **hidden until the reviewer asks for them**, are labelled *uncalibrated*, and whether they were revealed before a judgement is stored in the record. Failed, unexecuted and media-unavailable items, items whose registered output frames are missing or do not match their digests (`output_unreadable`), and items whose original reference is missing or unreadable (`reference_unavailable`), are listed with their status and can only be judged `not_assessable`. Every frame is re-verified when the view is built and again when a judgement is submitted. Judgements are `same_person`, `different_person`, `uncertain` and `not_assessable`, per clip or per frame, with optional private notes.
+- **Mode B (blinded quality).** Only succeeded attempts, keyed by fresh session-specific codes (`Q-XXXXXXXXXX`) in an order shuffled with `secrets.SystemRandom`. The browser never receives the reference, measurements, run ids, attempt numbers, identity/prompt ordinals, outcome or conditioning information. The rubric `frp-blinded-quality-rubric-0.1-draft` (a draft, **not validated**) scores subject visibility, temporal continuity, motion plausibility and freedom from artefacts on 1–5, or records the clip as `unscorable` with a reason. A clip whose frames are missing or fail their digest check is shown as unavailable and can only be recorded as `unscorable`, checked again on submission. Prompt adherence is excluded so that no prompt text reaches the blinded page. A reviewer who has opened **any** Mode A session on the store is refused a Mode B session, whether or not they saved a judgement: the Mode A session file is written before any media is served and is the durable exposure evidence. A Mode B session also stops accepting ratings if its reviewer opens Mode A concurrently; ratings saved before that are kept. The rule is store-wide (conservative), because a Mode A session can display every item.
+- **No combined score.** Identity observations and quality ratings are separate record types and are never merged.
+
+Playback uses one PNG per frame rather than a video file, so frame indices are exact and no video container parser is involved.
+
+### Records, retention and withdrawal
+
+- Each record is written once with an exclusive create, made read-only and stored with the SHA-256 of its canonical content; reading verifies it (`RecordIntegrityError` on mismatch). No update API exists. A second opinion or an `Adjudication` (linked to the original record ids) is a new record. `disagreements()` reports differing judgements without choosing a winner.
+- Records carry the reviewer role code (pattern `AA-00`), mode, instrument/rubric version, viewer version, timestamp and opaque item reference or blinding code. Mode B's code-to-item key lives only in the private session record.
+- **Integration points (not policy):** `withdrawal_scope()` locates every item, media id, record and blinding entry derived from one identity ordinal; deletion must run under the approved storage procedure (readiness gate 3), after which `withdrawal_remaining()` reports every class of material that still refers to the identity *in the store*: media, records, catalogue items or media entries, session blinding entries and access-log lines. Anything it cannot read is reported as remaining. Withdrawal is verified only when it returns an empty list. The catalogue and session records are write-once, so removing an identity from them is a deliberate replacement under the approved procedure, not an API call. Backups, provider snapshots and copies outside the store are beyond this software. No retention schedule is implemented; it must come from the approved storage gate.
+
+### Requirement mapping
+
+| # | Implemented control (software, best effort) | What it cannot do |
+| --- | --- | --- |
+| V1 | Binds only to a literal loopback address (others refused before a socket opens); unguessable per-session URL token compared in constant time; `Host` must be a loopback name (DNS-rebinding and forwarded-domain defence) | Cannot stop another local user or process on the same machine from connecting with the token |
+| V2 | Identifiable stores refused when any remote/hosted/CI indicator is set (Codespaces, dev containers, SSH, Colab, Jupyter, CI, …) | Detection is by environment variables; an unrecognised remote environment is not detected |
+| V3 | No hosting, sharing or tunnelling feature exists | Cannot stop a user from deliberately tunnelling the port |
+| V4 | All assets bundled; CSP `default-src 'none'` with `'self'` only for scripts, styles, images and fetch; in-process block on non-loopback connections and name lookups while serving; tests scan assets for external origins | The guard does not cover subprocesses or native code; the browser itself may contact its vendor |
+| V5 | `Cache-Control: no-store` and related headers; no download/export endpoint; context menu, drag and printing of media suppressed; images rendered from same-origin URLs only | Screenshots, screen recording, browser developer tools and the browser's own caches/crash dumps are outside the page's control |
+| V6 | `.gitignore` excludes review stores, `frp-review-*/` and access logs; identifiable stores inside a git working tree are refused | Cannot stop a deliberate copy into a repository or attachment |
+| V7 | Media addressed by random opaque ids looked up in the catalogue; filesystem paths never appear in responses, errors, logs or records; item labels are positional ("Item 2 of 7") | Content of the media itself is, by necessity, identifiable in Mode A |
+| V8 | Private grant must name the reviewer role code and mode; private append-only `access-log.jsonl` records session open/close, first view of each reference/output, measurement reveals and record saves, with opaque references only | Role codes are not authentication; the operating-system account is the real access boundary |
+| V9 | Withdrawal scope and verification hooks; owner-only permissions; session ends leave no thumbnails on disk (frames are served from the store) | No retention schedule or deletion procedure is implemented; backups are out of scope |
+| V10 | Persistent on-page warning and banner; documented below | Not technically enforceable |
+| V11 | Fail-closed: missing storage approval, remote environment, store in a git working tree or accessible to group/others, missing/expired/mismatched grant, or a synthetic label on non-demo frames each refuse the session before any media is read | Only as strong as the private grant provider, which does not exist yet |
+| V12 | Strict catalogue and record schemas; ids pattern-checked; symlinks and out-of-store paths refused; size limits; per-frame digest check; PNG structure and CRC validated and all ancillary (metadata) chunks dropped before serving; all text inserted with `textContent`, never as markup | Pixel decoding happens in the browser's image decoder, not in a separate constrained process |
+
+### Residual risks software cannot eliminate
+
+- Screenshots, screen recording, phone cameras, screen sharing and shoulder-surfing (V10).
+- A compromised or shared reviewer machine, other local users, browser extensions, and the browser's own crash reports or caches.
+- Copies made outside the store (backups, synced folders, provider snapshots), which withdrawal verification cannot see.
+- Reviewer judgement bias, fatigue and anchoring; hiding measurements until requested limits but does not remove anchoring.
+- Mode B blinding can be broken by recognising a clip seen elsewhere; the Mode A exclusion applies only to records in the same store.
+
+### Not implemented (future, separately reviewed)
+
+A private `ReviewAccessProvider` that issues grants; import of real Wan outputs and consented references into a store; a retention schedule and verified deletion procedure; agreement statistics; any real-data report.
