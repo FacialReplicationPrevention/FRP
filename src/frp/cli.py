@@ -1,5 +1,6 @@
-"""Command-line interface. Dry-run planning, simulated pipeline and static provenance/readiness
-checks only: never runs inference or fetches models.
+"""Command-line interface. Dry-run planning, simulated pipeline, static provenance/readiness
+checks, a synthetic review-store generator and a loopback-only private review viewer: never runs
+inference or fetches models.
 
 Exit codes: 0 success; 1 invalid manifest, plan, results or provenance inventory; 2 usage error;
 3 not ready (only with ``--require-ready``); 4 report files could not be written.
@@ -11,6 +12,7 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, TextIO
 
 from frp import __version__
@@ -45,6 +47,14 @@ from frp.readiness import (
 )
 from frp.reporting import CSV_FILENAME, MARKDOWN_FILENAME, SIMULATED_BANNER, write_reports
 from frp.results import ResultValidationError
+from frp.review.access import DenyAllReviewAccess, ReviewAccessDenied
+from frp.review.demo import SIMULATED_NOTICE as DEMO_NOTICE
+from frp.review.demo import create_demo_store
+from frp.review.records import ReviewMode
+from frp.review.security import loopback_only_network
+from frp.review.server import ReviewApp, ReviewServer
+from frp.review.session import PRIVATE_BANNER, ReviewController
+from frp.review.store import ReviewStore, StoreError
 from frp.simulation import DEFAULT_SCENARIO, SCENARIOS, simulate_experiment
 
 EXIT_OK = 0
@@ -52,6 +62,11 @@ EXIT_INVALID = 1
 EXIT_USAGE = 2
 EXIT_NOT_READY = 3
 EXIT_OUTPUT = 4
+
+REVIEW_MODE_ARGS: dict[str, ReviewMode] = {
+    "identity": "identity_inspection",
+    "quality": "blinded_quality",
+}
 
 NOTICE = (
     "DRY RUN - planning only. No model was loaded, no inference was run, no images or "
@@ -265,6 +280,34 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     readiness.add_argument("--format", choices=("text", "json"), default="text")
+    review_demo = subcommands.add_parser(
+        "review-demo",
+        help=(
+            "create a SIMULATED review store of procedurally generated, non-biometric frames "
+            "(no faces, no model output)"
+        ),
+    )
+    review_demo.add_argument("store", help="new or empty directory for the synthetic store")
+    review = subcommands.add_parser(
+        "review",
+        help=(
+            "open a private review session on 127.0.0.1 only (identifiable stores need a private "
+            "access grant, which this release cannot issue)"
+        ),
+    )
+    review.add_argument("store", help="review store directory")
+    review.add_argument(
+        "--mode",
+        choices=tuple(REVIEW_MODE_ARGS),
+        required=True,
+        help="identity: Mode A, unblinded identity inspection; quality: Mode B, blinded rating",
+    )
+    review.add_argument(
+        "--reviewer", required=True, help="private reviewer role code such as RV-01 (not a name)"
+    )
+    review.add_argument(
+        "--port", type=int, default=0, help="loopback port (default: a free ephemeral port)"
+    )
     return parser
 
 
@@ -597,6 +640,89 @@ def _readiness(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _review_demo(args: argparse.Namespace) -> int:
+    try:
+        demo = create_demo_store(Path(args.store))
+    except StoreError as exc:
+        _print_problems("frp: cannot create the synthetic review store:", exc.problems)
+        return EXIT_OUTPUT
+    except OSError as exc:
+        print(f"frp: error: cannot write the store ({type(exc).__name__})", file=sys.stderr)
+        return EXIT_OUTPUT
+    accounting = demo.results.accounting()
+    summary = demo.summary
+    print(
+        "\n".join(
+            (
+                DEMO_NOTICE,
+                "",
+                f"Experiment:   {demo.plan.experiment_id} "
+                f"(scenario {demo.results.simulation_scenario})",
+                f"Planned runs: {len(demo.plan.runs)}  Attempts: {accounting['attempts']}  "
+                f"Failed attempts: {accounting['failed_attempts']}  "
+                f"Unexecuted runs: {accounting['runs_unexecuted']}",
+                f"Review items: {demo.items} (every attempt and unexecuted run)",
+                f"Later-frame similarity available for {summary.identities_with_later_similarity}"
+                f" of {summary.identities_total} synthetic identities (fixture values, "
+                f"{summary.calibration_status})",
+                "",
+                "Open it with:  frp review <store> --mode identity --reviewer RV-01",
+                "           or  frp review <store> --mode quality --reviewer RV-02",
+            )
+        )
+    )
+    return EXIT_OK
+
+
+def _review(args: argparse.Namespace) -> int:
+    if not 0 <= args.port <= 65535:
+        print("frp: error: --port must be between 0 and 65535", file=sys.stderr)
+        return EXIT_USAGE
+    store = ReviewStore(Path(args.store))
+    try:
+        controller = ReviewController.open(
+            store,
+            mode=REVIEW_MODE_ARGS[args.mode],
+            reviewer_role_code=args.reviewer,
+            provider=DenyAllReviewAccess(),
+        )
+    except ReviewAccessDenied as exc:
+        _print_problems("frp: review access refused:", exc.problems)
+        return EXIT_INVALID
+    except StoreError as exc:
+        _print_problems("frp: invalid review store:", exc.problems)
+        return EXIT_INVALID
+    try:
+        server = ReviewServer(ReviewApp(controller), port=args.port)
+    except OSError as exc:
+        controller.close()
+        print(f"frp: error: cannot listen on loopback ({type(exc).__name__})", file=sys.stderr)
+        return EXIT_USAGE
+    banner = SIMULATED_BANNER if controller.catalogue.simulated else PRIVATE_BANNER
+    print(
+        "\n".join(
+            (
+                banner,
+                f"{controller.session_view()['mode_label']} - reviewer {args.reviewer}",
+                "Serving on the loopback interface only; outbound network access is blocked.",
+                "Open this private URL in a local browser (it contains a session token):",
+                f"  {server.url}",
+                "Press Ctrl+C to end the session.",
+            )
+        ),
+        flush=True,
+    )
+    with loopback_only_network():
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.close()
+            controller.close()
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     try:
@@ -612,6 +738,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _readiness(args)
     if args.command == "baseline-plan":
         return _baseline_plan(args)
+    if args.command == "review-demo":
+        return _review_demo(args)
+    if args.command == "review":
+        return _review(args)
 
     if not args.dry_run:
         print(

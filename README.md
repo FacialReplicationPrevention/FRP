@@ -13,7 +13,7 @@ Exploratory, open-source research for generative image and video systems — inc
 </div>
 
 > [!IMPORTANT]
-> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning, a **simulated** pipeline on synthetic fixtures, an offline model-provenance check and an offline check of a GPU-readiness *template* — no model inference and no biometric evaluation. No GPU job, weight download or evaluation of real people has been run.
+> **Research status: early-stage exploration.** FRP has **not** demonstrated a working facial-replication prevention mechanism. CID is a proposed research direction, not a proven guarantee. The current Python harness performs planning, a **simulated** pipeline on synthetic fixtures, an offline model-provenance check, an offline check of a GPU-readiness *template*, baseline evaluation/aggregation contracts and a local-only private review viewer that this release can open **only** on procedurally generated synthetic content — no model inference and no biometric evaluation. No GPU job, weight download or evaluation of real people has been run.
 
 ## Why FRP?
 
@@ -69,13 +69,13 @@ This A/B/C/D design is specific to Wan 2.1 I2V. A static review of **Wan 2.2 I2V
 | [Experiment 002 — Conditioning pathway ablation](experiments/002-conditioning-ablation-protocol.md) | Test paired A/B/C/D alterations while measuring identity **and** utility |
 | [Experiment 003 — Wan 2.1 I2V single-condition baseline (design only)](experiments/003-wan21-i2v-baseline-design.md) | Unaltered baseline contract: smoke, calibration and baseline roles; separate from A/B/C/D |
 
-Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is the current milestone. Its first PR (merged) was **preparation only**, and its second adds CPU-only baseline contracts and a mock-tested, fail-closed executor boundary with the live backend disabled (`frp baseline-plan`, see the [harness guide](docs/harness.md#wan-21-baseline-executor-contracts-milestone-004-pr-2)). The first PR contained: a [GPU readiness protocol](docs/gpu-readiness.md) with seven separate human approvals, the baseline design above, and a [private visual-review specification](docs/private-review-viewer.md). None of the gates has been approved, and no GPU, inference or evaluation has run.
+Milestone 004 ([#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)) is the current milestone. Its first PR ([#10](https://github.com/FacialReplicationPrevention/FRP/pull/10), merged) was **preparation only**: a [GPU readiness protocol](docs/gpu-readiness.md) with seven separate human approvals, the baseline design above, and a [private visual-review specification](docs/private-review-viewer.md). Its second ([#11](https://github.com/FacialReplicationPrevention/FRP/pull/11), merged) added CPU-only baseline contracts and a mock-tested, fail-closed executor boundary with the live backend disabled (`frp baseline-plan`, see the [harness guide](docs/harness.md#wan-21-baseline-executor-contracts-milestone-004-pr-2)). PR 3A adds CPU-only baseline evaluation and descriptive aggregation, and the local-only [private review viewer](docs/private-review-viewer.md) with a synthetic demonstration (`frp review-demo`, `frp review`; see the [harness guide](docs/harness.md#baseline-evaluation-and-private-review-milestone-004-pr-3a)). None of the gates has been approved, and no GPU, inference or evaluation of real media has run.
 
 **No empirical model-mitigation results have been published by FRP.** Research documents and experiment protocols are not evidence that protection works.
 
 ## Getting started
 
-The current implementation is a **CPU-only Python harness**. It validates versioned experiment manifests, creates deterministic Wan 2.1 A/B/C/D run plans, runs a **simulated** execution → evaluation → aggregation → reporting pipeline on deterministic synthetic fixtures, and validates the model-candidate provenance inventory offline. It runs **no inference**, downloads **no model weights**, and processes **no portraits or biometric data**.
+The current implementation is a **CPU-only Python harness**. It validates versioned experiment manifests, creates deterministic Wan 2.1 A/B/C/D run plans, runs a **simulated** execution → evaluation → aggregation → reporting pipeline on deterministic synthetic fixtures, validates the model-candidate provenance inventory offline, and serves a loopback-only review viewer over a synthetic demo store. It runs **no inference**, downloads **no model weights**, and processes **no portraits or biometric data**.
 
 **Prerequisite:** Python 3.11+. GitHub Codespaces installs dependencies using [the devcontainer configuration](.devcontainer/devcontainer.json). For a local setup:
 
@@ -92,6 +92,12 @@ frp plan examples/manifests/synthetic-dry-run.yaml --dry-run
 frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir runs/simulated-report
 frp provenance provenance/model-candidates.yaml
 frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml
+frp baseline-plan examples/manifests/synthetic-baseline-dry-run.yaml
+
+# Synthetic review demo (procedurally generated, non-biometric; outside the repository)
+frp review-demo /tmp/frp-review-demo
+frp review /tmp/frp-review-demo --mode identity --reviewer RV-01
+frp review /tmp/frp-review-demo --mode quality --reviewer RV-02
 ~~~
 
 The synthetic example intentionally has unset execution fields and reports **NOT READY**. For JSON planning output, append the <code>--format json</code> option. To enforce readiness validation, append <code>--require-ready</code>; this only checks manifest fields, **not** consent, licence validity or scientific correctness.
@@ -101,6 +107,8 @@ The synthetic example intentionally has unset execution fields and reports **NOT
 `frp provenance` checks the model-candidate inventory for internal consistency (pinned evidence for `verified` claims, no invented weight digests, no Wan 2.1 protocol on other architectures). It fetches nothing and does not re-verify upstream sources; every candidate is reported **NOT READY** for execution.
 
 `frp readiness` checks that the public GPU-readiness template is internally consistent and that its pins match the provenance inventory, which must be supplied with `--provenance` (without it the command fails). This is an offline consistency check, not upstream verification. Schema 1.0 can only express **pending** gates and no quote, so a passing check is **never** an approval to download weights, rent a GPU or process anyone's data.
+
+`frp review-demo` writes a store of coloured shapes with fixture "scores", labelled **SIMULATED**. `frp review` serves it on `127.0.0.1` only, behind a per-session token, with outbound network access blocked. A store labelled identifiable is refused: this release ships no access-grant provider, so it cannot open real media anywhere.
 
 Read [the harness guide](docs/harness.md) for schema requirements, adapter interfaces, result and report formats, privacy safeguards, exit codes and limitations.
 
@@ -112,7 +120,7 @@ Read [the harness guide](docs/harness.md) for schema requirements, adapter inter
 | Shared context and contributor guidance | Documented |
 | CPU experiment harness | Milestone 001 (manifest + planner) and Milestone 002 (simulated pipeline) merged |
 | Model selection and architecture verification | Milestone 003 merged (pinned source review, provenance inventory); weight hashes, licence-use review and GPU quote still pending |
-| GPU baseline and calibration | **Milestone 004 in progress** — PR 1 merged; PR 2 (CPU-only baseline executor contracts, mocked; live backend disabled) under review; no gate approved, no GPU, download, inference or evaluation run |
+| GPU baseline and calibration | **Milestone 004 in progress** — PR 1 and PR 2 merged (readiness design; CPU-only executor contracts, mocked, live backend disabled); PR 3A (CPU-only evaluation pipeline and private review viewer, synthetic demo only) in review; no gate approved, no GPU, download, inference or evaluation of real media run |
 | Wan 2.1 conditioning pathway ablation | Not started |
 | Intrinsic model-level mitigation | Hypothesis |
 | Robustness and hardening | Future research |
@@ -126,7 +134,7 @@ The [roadmap](ROADMAP.md) records milestones, decision gates, and the evidence r
 - [AGENTS.md](AGENTS.md) — instructions for human and AI contributors.
 - [docs/harness.md](docs/harness.md) — Python harness usage, simulated pipeline, provenance and readiness contracts, and scientific limitations.
 - [docs/gpu-readiness.md](docs/gpu-readiness.md) — go/no-go gates, cost-quote template, weight acquisition and data-handling procedure (design; nothing approved).
-- [docs/private-review-viewer.md](docs/private-review-viewer.md) — specification of the local-only side-by-side visual review (design; not built).
+- [docs/private-review-viewer.md](docs/private-review-viewer.md) — specification and implementation status of the local-only private review viewer (implemented for synthetic content only; no real media reviewed).
 
 ## Research and privacy principles
 

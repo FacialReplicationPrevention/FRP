@@ -42,6 +42,10 @@ credentials*.json
 /datasets/
 /outputs/
 /runs/
+# Private review stores, sessions, records and access logs (keep in approved private storage)
+/review-stores/
+frp-review-*/
+access-log.jsonl
 *.mp4
 *.mov
 *.avi
