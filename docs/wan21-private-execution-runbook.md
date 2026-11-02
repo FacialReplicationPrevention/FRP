@@ -133,8 +133,12 @@ Each is a separate, recorded human decision in private storage ([GPU readiness �
 Then, separately reviewed code (not in this PR): a private `AuthorisationProvider` that issues
 grants citing all seven records; a private `ReferenceProvider` and `ArtefactLocator`; a frozen,
 hashed execution environment and its digest; and a private entry point that constructs
-`TorchWanRuntime` + `Wan21UpstreamAdapter` + `Wan21BaselineExecutor` with the **same**
-`source_dir` for executor and runtime (bound by configuration only — see §10).
+`TorchWanRuntime` + `Wan21UpstreamAdapter` + `Wan21BaselineExecutor`. The executor refuses
+(`provenance_mismatch`, before load) unless the backend's declared `source_dir` resolves to the
+executor's own verified checkout, and the runtime separately checks that checkout is clean at the
+pinned commit before importing (see §10, item 3). The real `ArtefactLocator` must also fix an
+approved storage root, reject symlinked or unsafe parent directories and ensure private
+permissions before the adapter creates files; the test locator is not evidence of that.
 
 ## 7. Operator procedure for a future approved smoke test (planned)
 
@@ -187,10 +191,11 @@ For Ada's review (not silently decided):
 
 1. **Precision label** `upstream-i2v-14B-config`: upstream exposes no precision argument, so this is the only value the adapter can honour. Experiment 003 lists precision as pending.
 2. **Executor changes** (strengthening only): a backend-raised `ConditioningContractViolation` or `OutputContractViolation` is recorded as that detail instead of `generation_error`; a loaded prompt-extension/remote-service module now overrides any other failure detail.
-3. **Source-dir binding**: the executor verifies its `source_dir`; the runtime imports `wan` only from its own `source_dir` and refuses a `wan` imported elsewhere, but the two paths are matched by configuration. A protocol-level binding would change `Wan21Backend`.
+3. **Source binding** (re-review P1): the executor refuses a backend whose declared `source_dir` is not its own verified checkout, and a *live* backend that declares none. `TorchWanRuntime` independently requires its checkout to be clean at the pinned commit and fails **before any import** if any cached `wan` or `wan.*` module comes from elsewhere; after import it re-checks every `wan.*` module. The check is a path comparison plus a git inspection, not an attestation: the time between inspection and import, and a different checkout mounted at the same path, are not covered. **[CPU-fake]** (synthetic package tree).
 4. **Orientation rule**: references must match the `width*height` label; upstream itself ignores the label's orientation.
-5. **Environment digest** excludes CUDA driver/toolkit and container image digest; these belong in the private record.
-6. **Instrumentation effect**: proxies add attribute indirection and device-side equality checks to the run; their effect on timing is unmeasured (they do not change upstream arguments).
+5. **Process environment** (re-review P1): `TorchWanRuntime` always judges the real `os.environ`; the constructor accepts no mapping. `runtime_environment_problems(mapping)` remains a pure helper for isolated tests only. The in-process network guard is a backstop, not a substitute.
+6. **Environment digest** excludes CUDA driver/toolkit and container image digest; these belong in the private record.
+7. **Instrumentation effect**: proxies add attribute indirection and device-side equality checks to the run; their effect on timing is unmeasured (they do not change upstream arguments).
 
 [i2v]: https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py
 [gen]: https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/generate.py

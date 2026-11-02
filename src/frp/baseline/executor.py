@@ -207,6 +207,19 @@ class Wan21BaselineExecutor:
             self._refusal = refusal
             raise
 
+    def _backend_source_is_verified_checkout(self) -> bool:
+        """A backend that imports upstream code must import it from the checkout verified here.
+
+        A live backend that does not declare ``source_dir`` cannot be bound, so it is refused.
+        """
+        declared = getattr(self._backend, "source_dir", None)
+        if declared is None:
+            return not self._backend.info.live
+        try:
+            return Path(declared).resolve() == self._source_dir.resolve()
+        except (OSError, RuntimeError, TypeError):
+            return False
+
     def _prepare_checks(self, grant: PrivateAuthorisation) -> None:
         m = self._manifest
         if prohibited_modules_loaded():
@@ -219,6 +232,8 @@ class Wan21BaselineExecutor:
             raise ExecutionRefused("backend_unavailable") from None
         commit = self._inspector.head_commit(self._source_dir)
         if commit != m.upstream_commit_sha or not self._inspector.is_clean(self._source_dir):
+            raise ExecutionRefused("provenance_mismatch")
+        if not self._backend_source_is_verified_checkout():
             raise ExecutionRefused("provenance_mismatch")
         try:
             environment = self._backend.environment_sha256()

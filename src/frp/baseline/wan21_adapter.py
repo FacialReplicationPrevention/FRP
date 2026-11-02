@@ -372,6 +372,11 @@ class Wan21UpstreamAdapter:
             raise UnsupportedConfiguration(problems)
         self._runtime.check_available()
 
+    @property
+    def source_dir(self) -> Path | None:
+        """The checkout upstream code is imported from; the executor requires it to be its own."""
+        return getattr(self._runtime, "source_dir", None)
+
     def environment_sha256(self) -> str:
         return self._runtime.environment_sha256()
 

@@ -666,7 +666,7 @@ fake of the upstream interface, and no command, default or CI path constructs it
 - `TorchWanRuntime` is the only code that would import `torch`/`wan`, and only inside its methods.
   It refuses CI and Codespaces, requires `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` and torch
   >= 2.6 (weights-only `torch.load` default; upstream calls `torch.load` without `weights_only`),
-  and imports `wan` only from the verified source checkout.
+  and imports `wan` only from a checkout it verifies clean at the pinned commit; the executor refuses a backend whose `source_dir` is not its own verified checkout (and a live backend declaring none), and a cached foreign `wan.*` module blocks the import. The runtime judges the real `os.environ`; it accepts no injected mapping.
 - `info.live` is true only for the exact `TorchWanRuntime` type, so results through any fake are
   `simulated: true` and the PR 3A evaluation flag checks still apply.
 - Executor changes (strengthening only): a backend-raised `ConditioningContractViolation` or

@@ -259,6 +259,7 @@ class FakeRuntime:
     pipelines: list[FakeWanI2V] = field(default_factory=list)
     loaded_from: list[VerifiedCheckpoint] = field(default_factory=list)
     saved_fps: list[int] = field(default_factory=list)
+    source_dir: Path | None = None  # None: declares no checkout (a mock needs none)
 
     def check_available(self) -> None:
         self.events.append("check_available")

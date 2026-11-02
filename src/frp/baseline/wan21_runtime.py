@@ -49,10 +49,13 @@ from typing import Any, Final, Protocol
 
 from frp.baseline.backend import BackendUnavailable
 from frp.baseline.preflight import (
+    GitSourceInspector,
+    SourceInspector,
     VerifiedCheckpoint,
     compute_environment_digest,
     prohibited_modules_loaded,
 )
+from frp.baseline.protocol import WAN21_SOURCE_COMMIT
 from frp.baseline.results import TensorMeta
 from frp.baseline.wan21_probe import TensorInspector
 
@@ -163,6 +166,12 @@ def _within(module: Any, root: Path) -> bool:
     return location is not None and Path(location).resolve().is_relative_to(root)
 
 
+def foreign_wan_modules(root: Path) -> int:
+    """Count cached ``wan`` and ``wan.*`` modules that do not come from ``root``."""
+    names = [name for name in list(sys.modules) if name == "wan" or name.startswith("wan.")]
+    return sum(1 for name in names if not _within(sys.modules.get(name), root))
+
+
 @contextlib.contextmanager
 def _without_info_logging() -> Iterator[None]:
     """Upstream logs checkpoint paths at INFO while loading (e.g. ``clip.py`` L517)."""
@@ -177,8 +186,11 @@ def _without_info_logging() -> Iterator[None]:
 class TorchWanRuntime:
     """Pinned-upstream implementation of :class:`UpstreamRuntime`. Never constructed in CI.
 
-    ``source_dir`` must be the same clean checkout the executor verifies; ``wan`` is imported only
-    from there. Construction does nothing; every import happens inside a method.
+    ``wan`` is imported only from ``source_dir``, which must be the checkout the executor verifies
+    (the executor refuses a different path) and which this runtime also checks to be clean and at
+    the pinned commit before any import. The process environment is always the real
+    ``os.environ``; it cannot be injected. Construction does nothing; every import happens inside
+    a method.
     """
 
     def __init__(
@@ -186,16 +198,33 @@ class TorchWanRuntime:
         *,
         source_dir: Path,
         device_id: int = 0,
-        environ: Mapping[str, str] | None = None,
+        source_inspector: SourceInspector | None = None,
     ) -> None:
         self._source_dir = source_dir
         self._device_id = device_id
-        self._environ = os.environ if environ is None else environ
+        self._inspector = source_inspector or GitSourceInspector()
+
+    @property
+    def source_dir(self) -> Path:
+        return self._source_dir
+
+    def _source_problems(self) -> list[str]:
+        source = self._source_dir
+        if not (source / "wan" / "image2video.py").is_file():
+            return ["the source checkout does not contain the upstream wan package"]
+        problems = []
+        if self._inspector.head_commit(
+            source
+        ) != WAN21_SOURCE_COMMIT or not self._inspector.is_clean(source):
+            problems.append("the runtime's source checkout is not clean at the pinned commit")
+        if foreign_wan_modules(source.resolve()):
+            problems.append("a wan module from another location is already imported")
+        return problems
 
     # -- availability and provenance ---------------------------------------------------------
 
     def check_available(self) -> None:
-        problems = runtime_environment_problems(self._environ)
+        problems = runtime_environment_problems(os.environ)
         if missing := [name for name in REQUIRED_MODULES if importlib.util.find_spec(name) is None]:
             problems.append(f"{len(missing)} required upstream dependency module(s) are missing")
         try:
@@ -204,11 +233,7 @@ class TorchWanRuntime:
             torch_version = None
         if problem := torch_version_problem(torch_version):
             problems.append(problem)
-        if not (self._source_dir / "wan" / "image2video.py").is_file():
-            problems.append("the source checkout does not contain the upstream wan package")
-        existing = sys.modules.get("wan")
-        if existing is not None and not _within(existing, self._source_dir.resolve()):
-            problems.append("a wan package from another location is already imported")
+        problems.extend(self._source_problems())
         if problems:
             raise RuntimeUnavailable(problems)
 
@@ -237,6 +262,10 @@ class TorchWanRuntime:
     # -- model lifecycle ---------------------------------------------------------------------
 
     def _import_wan(self) -> Any:
+        # Fail before importing anything if the checkout is not the pinned, clean one or if a
+        # cached wan module could substitute for it.
+        if problems := self._source_problems():
+            raise RuntimeUnavailable(problems)
         source = self._source_dir.resolve()
         sys.path.insert(0, str(source))
         try:
@@ -245,7 +274,7 @@ class TorchWanRuntime:
         finally:
             with contextlib.suppress(ValueError):
                 sys.path.remove(str(source))
-        if not all(_within(sys.modules.get(name), source) for name in _WAN_MODULES):
+        if foreign_wan_modules(source) or not all(name in sys.modules for name in _WAN_MODULES):
             raise RuntimeUnavailable(["the wan package was not imported from the source checkout"])
         if prohibited_modules_loaded():
             raise RuntimeUnavailable(["a prompt-extension or remote-service module was imported"])

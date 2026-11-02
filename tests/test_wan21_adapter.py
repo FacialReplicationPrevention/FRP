@@ -8,10 +8,12 @@ how the real Wan 2.1 model behaves**, and every success here is labelled simulat
 from __future__ import annotations
 
 import dataclasses
+import importlib
 import itertools
 import logging
 import subprocess
 import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -781,7 +783,7 @@ def test_real_runtime_is_refused_by_default_and_imports_nothing(tmp_path: Path) 
     s = Setup(tmp_path, runtime=FakeRuntime())
     adapter = Wan21UpstreamAdapter(
         manifest=s.manifest,
-        runtime=TorchWanRuntime(source_dir=tmp_path / "src", environ={}),
+        runtime=TorchWanRuntime(source_dir=tmp_path / "src"),
         artefacts=StoreLocator(s.store),
     )
     executor = Wan21BaselineExecutor(
@@ -801,12 +803,15 @@ def test_real_runtime_is_refused_by_default_and_imports_nothing(tmp_path: Path) 
 
 
 def test_real_runtime_without_dependencies_or_offline_settings_is_unavailable(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("CI", "1")
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
     s = Setup(tmp_path)
     adapter = Wan21UpstreamAdapter(
         manifest=s.manifest,
-        runtime=TorchWanRuntime(source_dir=tmp_path / "src", environ={"CI": "true"}),
+        runtime=TorchWanRuntime(source_dir=tmp_path / "src"),
         artefacts=StoreLocator(s.store),
     )
     executor = Wan21BaselineExecutor(
@@ -824,7 +829,7 @@ def test_real_runtime_without_dependencies_or_offline_settings_is_unavailable(
     assert excinfo.value.code == "backend_unavailable"
     assert s.files() == []
     with pytest.raises(RuntimeUnavailable) as unavailable:
-        TorchWanRuntime(source_dir=tmp_path / "src", environ={"CI": "1"}).check_available()
+        TorchWanRuntime(source_dir=tmp_path / "src").check_available()
     problems = " ".join(unavailable.value.problems)
     assert "CI and Codespaces" in problems
     assert "HF_HUB_OFFLINE, TRANSFORMERS_OFFLINE" in problems
@@ -864,7 +869,7 @@ def test_environment_digest_reads_metadata_without_importing_ml_packages(tmp_pat
     code = (
         "import sys; from pathlib import Path;"
         "from frp.baseline.wan21_runtime import TorchWanRuntime;"
-        "r = TorchWanRuntime(source_dir=Path('.'), environ={});"
+        "r = TorchWanRuntime(source_dir=Path('.'));"
         "d = r.environment_sha256(); assert d == r.environment_sha256() and len(d) == 64;"
         "print([m for m in ('torch','wan','PIL','numpy','torchvision') if m in sys.modules])"
     )
@@ -937,3 +942,178 @@ def test_probe_without_any_upstream_call_reports_a_violation() -> None:
     with pytest.raises(ConditioningContractViolation) as excinfo:
         _probe(FakeRuntime()).observation()
     assert len(excinfo.value.problems) == 4
+
+
+# -- binding the imported upstream source to the verified checkout --------------------------------
+
+
+def _executor_for(s: Setup, backend: Any, source_dir: Path) -> Wan21BaselineExecutor:
+    return Wan21BaselineExecutor(
+        manifest=s.manifest,
+        backend=backend,
+        references=FixedReferences(),
+        checkpoint_dir=s.root,
+        source_dir=source_dir,
+        artefact_base_uri=ARTEFACT_BASE,
+        authorisation=RecordingProvider(),
+        source_inspector=FakeInspector(),
+    )
+
+
+def test_backend_importing_from_another_checkout_is_refused_before_load(tmp_path: Path) -> None:
+    verified, other = tmp_path / "verified", tmp_path / "other"
+    verified.mkdir()
+    other.mkdir()
+    s = Setup(tmp_path, runtime=FakeRuntime(source_dir=other))
+    executor = _executor_for(s, s.adapter, verified)
+    with pytest.raises(ExecutionRefused) as excinfo:
+        executor.execute(s.run, 1)
+    assert excinfo.value.code == "provenance_mismatch"
+    s.assert_nothing_loaded_or_generated()
+
+
+def test_backend_importing_from_the_verified_checkout_is_accepted(tmp_path: Path) -> None:
+    verified = tmp_path / "verified"
+    verified.mkdir()
+    s = Setup(tmp_path, runtime=FakeRuntime(source_dir=verified / ".." / "verified"))
+    outcome = _executor_for(s, s.adapter, verified).execute(s.run, 1)
+    assert outcome.execution.status == "succeeded"
+
+
+def test_live_backend_that_declares_no_source_checkout_is_refused(tmp_path: Path) -> None:
+    from tests.baseline_support import FakeBackend
+
+    s = Setup(tmp_path)
+    backend = FakeBackend(live=True)
+    executor = _executor_for(s, backend, tmp_path)
+    with pytest.raises(ExecutionRefused) as excinfo:
+        executor.execute(s.run, 1)
+    assert excinfo.value.code == "provenance_mismatch"
+    assert "load" not in backend.events
+    assert "generate" not in backend.events
+
+
+@pytest.fixture
+def clean_wan_modules():
+    def wan_names() -> list[str]:
+        return [n for n in sys.modules if n == "wan" or n.startswith("wan.")]
+
+    saved = {name: sys.modules.pop(name) for name in wan_names()}
+    yield wan_names
+    for name in wan_names():
+        del sys.modules[name]
+    sys.modules.update(saved)
+
+
+def _synthetic_wan_tree(root: Path, init_body: str = "") -> Path:
+    """A harmless stand-in for the upstream package layout; imports nothing."""
+    for name in ("wan/__init__.py", "wan/configs/__init__.py", "wan/utils/__init__.py"):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(init_body if name == "wan/__init__.py" else "")
+    (root / "wan/utils/utils.py").write_text("")
+    (root / "wan/image2video.py").write_text("")
+    importlib.invalidate_caches()
+    return root
+
+
+def _foreign_module(name: str, tmp_path: Path) -> types.ModuleType:
+    module = types.ModuleType(name)
+    module.__file__ = str(tmp_path / "foreign" / f"{name}.py")
+    return module
+
+
+def test_runtime_imports_wan_only_from_its_pinned_clean_checkout(
+    tmp_path: Path, clean_wan_modules: Any
+) -> None:
+    source = _synthetic_wan_tree(tmp_path / "pinned")
+    runtime = TorchWanRuntime(source_dir=source, source_inspector=FakeInspector())
+    assert runtime._import_wan() is sys.modules["wan"]
+    names = clean_wan_modules()
+    assert {"wan", "wan.configs", "wan.utils.utils"} <= set(names)
+    assert all(Path(sys.modules[n].__file__).resolve().is_relative_to(source) for n in names)
+
+
+@pytest.mark.parametrize(
+    "inspector", [FakeInspector(commit="1" * 40), FakeInspector(clean=False), FakeInspector(None)]
+)
+def test_runtime_refuses_an_unpinned_or_dirty_checkout_before_importing(
+    tmp_path: Path, clean_wan_modules: Any, inspector: FakeInspector
+) -> None:
+    source = _synthetic_wan_tree(tmp_path / "unpinned")
+    runtime = TorchWanRuntime(source_dir=source, source_inspector=inspector)
+    with pytest.raises(RuntimeUnavailable, match="not clean at the pinned commit"):
+        runtime._import_wan()
+    assert clean_wan_modules() == []  # nothing from the checkout was imported
+
+
+@pytest.mark.parametrize("cached", ["wan", "wan.image2video", "wan.modules.clip"])
+def test_runtime_refuses_a_cached_foreign_wan_module_before_importing(
+    tmp_path: Path, clean_wan_modules: Any, cached: str
+) -> None:
+    source = _synthetic_wan_tree(tmp_path / "pinned")
+    sys.modules[cached] = _foreign_module(cached, tmp_path)
+    runtime = TorchWanRuntime(source_dir=source, source_inspector=FakeInspector())
+    with pytest.raises(RuntimeUnavailable, match="already imported"):
+        runtime._import_wan()
+    assert clean_wan_modules() == [cached]  # untouched; no submodule was imported over it
+
+
+def test_runtime_for_a_different_checkout_refuses_modules_cached_from_the_first(
+    tmp_path: Path, clean_wan_modules: Any
+) -> None:
+    first = _synthetic_wan_tree(tmp_path / "first")
+    second = _synthetic_wan_tree(tmp_path / "second")
+    TorchWanRuntime(source_dir=first, source_inspector=FakeInspector())._import_wan()
+    with pytest.raises(RuntimeUnavailable, match="already imported"):
+        TorchWanRuntime(source_dir=second, source_inspector=FakeInspector())._import_wan()
+
+
+def test_runtime_rejects_a_foreign_submodule_registered_during_import(
+    tmp_path: Path, clean_wan_modules: Any
+) -> None:
+    body = (
+        "import sys, types\n"
+        "m = types.ModuleType('wan.sneaky'); m.__file__ = '/elsewhere/sneaky.py'\n"
+        "sys.modules['wan.sneaky'] = m\n"
+    )
+    source = _synthetic_wan_tree(tmp_path / "pinned", body)
+    runtime = TorchWanRuntime(source_dir=source, source_inspector=FakeInspector())
+    with pytest.raises(RuntimeUnavailable, match="not imported from the source checkout"):
+        runtime._import_wan()
+
+
+def test_runtime_reports_checkout_problems_in_check_available(
+    tmp_path: Path, clean_wan_modules: Any
+) -> None:
+    source = _synthetic_wan_tree(tmp_path / "pinned")
+    sys.modules["wan.image2video"] = _foreign_module("wan.image2video", tmp_path)
+    with pytest.raises(RuntimeUnavailable) as excinfo:
+        TorchWanRuntime(source_dir=source, source_inspector=FakeInspector()).check_available()
+    assert "a wan module from another location is already imported" in excinfo.value.problems
+
+
+# -- the real runtime judges the real process environment ----------------------------------------
+
+
+def test_real_runtime_cannot_be_given_an_environment_mapping(tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        TorchWanRuntime(  # type: ignore[call-arg]
+            source_dir=tmp_path, environ={"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
+        )
+
+
+def test_real_runtime_uses_the_actual_environment_not_a_claimed_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CODESPACES", "true")
+    runtime = TorchWanRuntime(source_dir=tmp_path, source_inspector=FakeInspector())
+    with pytest.raises(RuntimeUnavailable) as excinfo:
+        runtime.check_available()
+    problems = " ".join(excinfo.value.problems)
+    assert "CI and Codespaces" in problems
+    assert "HF_HUB_OFFLINE, TRANSFORMERS_OFFLINE" in problems
+    # The pure helper still judges an isolated mapping, which can differ from the process.
+    assert runtime_environment_problems({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}) == []
