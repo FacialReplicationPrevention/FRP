@@ -491,7 +491,8 @@ never validates as an ablation manifest, nor the reverse.
 | `preflight` | local SHA-256 of **every** checkpoint file, source-commit check, environment digest, network and prompt-extension module guards |
 | `authorisation` | private authorisation *interface*; only `DenyAllAuthorisation` ships |
 | `orchestrator` | runs a plan, bounded retries, halts, full accounting |
-| `upstream` | the live backend: **disabled** placeholder; imports nothing heavy |
+| `upstream` | the default live backend: **disabled** placeholder; imports nothing heavy |
+| `wan21_adapter`, `wan21_probe`, `wan21_runtime` | gated, source-mapped upstream adapter (PR 3B); constructed by no command; CPU-tested against a fake only (see [below](#gated-wan-21-upstream-adapter-milestone-004-pr-3b)) |
 
 **Roles.** `smoke` (one identity/prompt/seed, no split, technical claim only; no similarity is ever
 evaluated), `calibration` (identity split `calibration`) and `baseline` (split `evaluation`).
@@ -535,9 +536,9 @@ live option; unknown flags are usage errors. It always reports `NOT EXECUTION RE
 (unset fields, no private authorisation mechanism, disabled live backend), distinguishing a valid
 plan from execution readiness. Pseudonyms and prompt ids are redacted to ordinals by default.
 
-**Still unverified or unwired** (must be settled before any approved GPU run): the live backend and
-its instrumentation of the upstream flow (see `frp.baseline.upstream`; no upstream call has been
-exercised); the approved software environment and its digest; local SHA-256 of the real
+**Still unverified or unwired** (must be settled before any approved GPU run): the live backend's
+behaviour on real hardware (PR 3B maps and instruments the upstream flow but has only run against
+a CPU fake; see the [runbook](wan21-private-execution-runbook.md)); the approved software environment and its digest; local SHA-256 of the real
 checkpoint files and the private expected manifest; the hardware, runtime and cost figures; the
 private authorisation provider; reference-image preprocessing and storage; face and quality
 evaluators; the numerical controls (`frame_count`, `resolution`, steps, guidance, shift,
@@ -631,9 +632,9 @@ identifiable stores in remote environments regardless.
 
 ### How this connects to a future live baseline
 
-1. An approved, separately reviewed live `Wan21Backend` and private `PrivateAuthorisation` provider
-   (neither exists) let `execute_baseline_plan` produce a `simulated: false` unevaluated
-   `BaselineResultSet` in approved private storage.
+1. An approved private `PrivateAuthorisation` provider (none exists) and a private entry point that
+   constructs the gated PR 3B adapter over the real runtime let `execute_baseline_plan` produce a
+   `simulated: false` unevaluated `BaselineResultSet` in approved private storage.
 2. Separately reviewed real `FaceIdentityEvaluator`/`VideoQualityEvaluator` adapters (pinned
    revisions, licences, settings) are applied with `evaluate_baseline_results`, in an approved
    private environment. None exists; the simulated-flag check prevents fixture evaluators.
@@ -643,6 +644,34 @@ identifiable stores in remote environments regardless.
    references into a review store with an approved storage reference; a private
    `ReviewAccessProvider` (not implemented, separately reviewed) issues grants citing the consent
    and storage gates. Reviewers then use Mode A and, separately, Mode B on the reviewer machine.
+
+## Gated Wan 2.1 upstream adapter (Milestone 004, PR 3B)
+
+Modules: [`frp.baseline.wan21_adapter`](../src/frp/baseline/wan21_adapter.py),
+[`frp.baseline.wan21_probe`](../src/frp/baseline/wan21_probe.py),
+[`frp.baseline.wan21_runtime`](../src/frp/baseline/wan21_runtime.py). Contract map, control
+mapping, pinned call sites, loader-safety assessment and the approval-dependent steps:
+[gated private-execution runbook](wan21-private-execution-runbook.md).
+**NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE: the adapter has run only against a CPU
+fake of the upstream interface, and no command, default or CI path constructs it.**
+
+- `Wan21UpstreamAdapter` implements `Wan21Backend` over an injected `UpstreamRuntime`. It sits
+  behind the unchanged executor gates and adds: `configuration_problems` (refused in
+  `check_available`, so before any load), `map_request` (every argument of the pinned
+  `WanI2V.generate` passed explicitly from the frozen manifest; mismatches refused), exact output
+  geometry, a write-once private artefact and typed, message-free failures with cleanup.
+- `ConditioningProbe` wraps the text encoder, CLIP, VAE and denoiser of one `WanI2V` instance for
+  one call and checks that the same original reference reaches the CLIP and VAE first-frame routes
+  and both CFG branches; it records shape/dtype/device and branch order only.
+- `TorchWanRuntime` is the only code that would import `torch`/`wan`, and only inside its methods.
+  It refuses CI and Codespaces, requires `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` and torch
+  >= 2.6 (weights-only `torch.load` default; upstream calls `torch.load` without `weights_only`),
+  and imports `wan` only from the verified source checkout.
+- `info.live` is true only for the exact `TorchWanRuntime` type, so results through any fake are
+  `simulated: true` and the PR 3A evaluation flag checks still apply.
+- Executor changes (strengthening only): a backend-raised `ConditioningContractViolation` or
+  `OutputContractViolation` keeps that failure detail; a loaded prompt-extension/remote-service
+  module overrides any other failure detail.
 
 ## Known limitations
 
@@ -676,8 +705,9 @@ identifiable stores in remote environments regardless.
 - `frp readiness` checks the public template only. It cannot confirm that any licence, consent,
   storage, provider or budget review took place, and prompt extension is **not yet enforced** by
   any A/B/C/D executor or by the Wan 2.1 A/B/C/D manifest (the baseline contracts below do lock it).
-  The baseline manifest, plan, result schema and mock-tested executor exist, but the live backend
-  is disabled and unverified; see the section above and
+  The baseline manifest, plan, result schema and mock-tested executor exist; the default live
+  backend is disabled, and the PR 3B adapter is unverified on real hardware and unreachable without
+  a private authorisation provider; see the section above and
   [Experiment 003](../experiments/003-wan21-i2v-baseline-design.md).
 
 ## Dependency versioning strategy

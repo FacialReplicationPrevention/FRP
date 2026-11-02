@@ -46,6 +46,7 @@ from frp.baseline.backend import (
     GenerationTimeout,
     LiveExecutionDisabled,
     ModelLoadError,
+    OutputContractViolation,
     ReferenceHandle,
     ReferenceProvider,
     StopReasonCode,
@@ -310,13 +311,19 @@ class Wan21BaselineExecutor:
                 detail = "resource_exhausted"
             except RemoteAccessBlocked:
                 detail = "remote_call_blocked"
+            except ConditioningContractViolation:
+                # A backend may abort mid-generation on a violation it observed itself.
+                detail = "conditioning_contract_violation"
+            except OutputContractViolation:
+                detail = "output_contract_violation"
             except KeyboardInterrupt:
                 detail = "operator_abort"
             except Exception:
                 detail = "model_load_error" if stage == "load" else "generation_error"
             if blocked_calls:
                 detail = "remote_call_blocked"
-            elif detail is None and prohibited_modules_loaded():
+            elif prohibited_modules_loaded():
+                # Overrides any other outcome: a remote-service import is an integrity failure.
                 detail = "prohibited_module_loaded"
             if detail is None and output is not None:
                 detail, summary = self._check_output(output, request)

@@ -72,6 +72,10 @@ class GenerationResourceExhausted(BackendError):
     """Out of GPU or host memory or storage."""
 
 
+class OutputContractViolation(BackendError):
+    """The backend refused to write a video whose shape breaks the frozen controls."""
+
+
 @dataclass(frozen=True, slots=True)
 class BackendInfo:
     name: str
