@@ -1,7 +1,7 @@
 # Experiment 003 — Wan 2.1 I2V single-condition baseline (design only)
 
 **Date:** 2026-10-30
-**Status:** Design. PR 2 implements the CPU-testable manifest, plan and result contracts and a mock-tested executor boundary (see [Implementation status](#implementation-status-milestone-004-pr-2)); PR 3A adds CPU-only evaluation, descriptive aggregation and the private review viewer (see [PR 3A status](#implementation-status-milestone-004-pr-3a)). The design itself is **not reviewed**, live execution is **disabled**, no model has been run and nothing has been measured.
+**Status:** Design. PR 2 implements the CPU-testable manifest, plan and result contracts and a mock-tested executor boundary (see [Implementation status](#implementation-status-milestone-004-pr-2)); PR 3A adds CPU-only evaluation, descriptive aggregation and the private review viewer (see [PR 3A status](#implementation-status-milestone-004-pr-3a)); PR 3B adds a gated upstream adapter tested only against a CPU fake (see [PR 3B status](#implementation-status-milestone-004-pr-3b)). The design itself is **not reviewed**, live execution is **disabled**, no model has been run and nothing has been measured.
 **Milestone:** [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) (Roadmap Phase 3), PRs 1 and 2 of 3.
 **Builds on:** [Experiment 001](001-baseline-protocol.md) (generic baseline plan, unchanged), [Research 001](../research/001-identity-replication-measurement.md), [Research 005](../research/005-wan-model-candidates.md).
 **Distinct from:** [Experiment 002](002-conditioning-ablation-protocol.md), the Wan 2.1 CLIP × VAE A/B/C/D diagnostic ablation. That design, its manifest schema 1.0 and result protocol `wan2.1-i2v-clip-vae-2x2` are unchanged.
@@ -124,6 +124,14 @@ CPU-only and tested on synthetic, non-biometric fixtures; see the [harness guide
 - **§5 items 6–7 not implemented.** No calibration, threshold, interval or variability analysis; similarities are reported as `uncalibrated`.
 - **Blinded human rubric (§5 item 4b).** Mode B of the viewer records ratings under `frp-blinded-quality-rubric-0.1-draft`, a draft that has not been validated and excludes prompt adherence. Mode A records identity observations separately; the two are never combined.
 - **Not done:** real evaluator adapters, import of real outputs into a review store, a private review-access provider, agreement statistics, any measurement.
+
+## Implementation status (Milestone 004, PR 3B)
+
+NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE. A gated adapter for the pinned upstream `WanI2V` (`frp.baseline.wan21_adapter`) sits behind the unchanged executor gates and is constructed by no command; it is tested only against a CPU fake of the upstream interface. Contract map, control mapping and pinned call sites: [gated private-execution runbook](../docs/wan21-private-execution-runbook.md).
+
+- **§3 controls.** Every upstream `generate` argument is passed explicitly from the manifest; unsupported settings are refused before load. **Proposed for review:** `precision` accepts only `upstream-i2v-14B-config`, because upstream fixes dtypes in its config and exposes no precision argument. `resolution` sets `max_area` only; upstream derives orientation from the reference, so the adapter requires the reference orientation to match the `width*height` label.
+- **§6 smoke acceptance.** The checks the adapter can perform (same reference on both routes and both CFG branches, step count, frame count, exact geometry, no prompt extension or network use, private write-once artefact) are implemented and CPU-fake tested; none has run on the real model.
+- **Not done:** any approval, private authorisation provider, private entry point, checkpoint download or hashing, real CLIP/VAE execution, VRAM/runtime measurement.
 
 ## Limitations
 
