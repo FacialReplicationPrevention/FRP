@@ -3,6 +3,7 @@
 **Status:** Design and checklist only. **Nothing here has been done, approved or executed.** No GPU has been provisioned, no weights downloaded, no person's data processed, no quote obtained.
 **Issue:** [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9). **Machine-readable template:** [`readiness/wan21-i2v-baseline.yaml`](../readiness/wan21-i2v-baseline.yaml), checked offline by `frp readiness`.
 **Companion documents:** [Experiment 003 — baseline design](../experiments/003-wan21-i2v-baseline-design.md), [Private visual-review specification](private-review-viewer.md), [Research 005](../research/005-wan-model-candidates.md).
+**Decision dossier (PR 3D, planning only):** [GPU go/no-go dossier](gpu-go-no-go-dossier.md) — unverified provider/hardware comparison, illustrative cost scenarios, private-evidence list per gate, proposed (unexecuted) smoke-test spec and no-go conditions. It records no approval, quote or measurement; all seven gates below remain pending.
 
 ## Evidence labels
 

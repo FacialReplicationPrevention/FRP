@@ -5,6 +5,10 @@ Nothing in this document has been performed. The adapter it describes has run on
 fake of the upstream interface. All seven human gates in the [GPU readiness protocol](gpu-readiness.md)
 are **pending**, and neither this document, a passing test nor a merged PR approves any of them.
 
+**Later planning (PR 3D):** the [GPU go/no-go dossier](gpu-go-no-go-dossier.md) maps the PR 3C
+residual risks and a fail-closed inspection/stop checklist onto this procedure and proposes (does
+not authorise) a single-condition smoke-run spec. It changes no contract in this runbook.
+
 **Issue:** [#13](https://github.com/FacialReplicationPrevention/FRP/issues/13) (sub-task of
 [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9)).
 **Code:** [`frp.baseline.wan21_adapter`](../src/frp/baseline/wan21_adapter.py),

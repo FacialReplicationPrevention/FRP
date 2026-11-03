@@ -9,7 +9,10 @@ the tests or merging the PR that added it authorises nothing: each gate is a sep
 
 Companion documents: [security design](private-execution-security-design.md) (§ numbers below refer
 to it), [runbook](wan21-private-execution-runbook.md), and the machine-readable
-[readiness template](../readiness/wan21-i2v-baseline.yaml).
+[readiness template](../readiness/wan21-i2v-baseline.yaml). The
+[GPU go/no-go dossier](gpu-go-no-go-dossier.md) (PR 3D, planning only) lists the public-source
+evidence, unverified provider questions, illustrative cost scenarios and per-gate private evidence
+needed to fill this worksheet; it fills nothing in and approves nothing.
 
 **Pinned targets (expected values only):** `Wan-Video/Wan2.1` @
 `9737cba9c1c3c4d04b33fcad41c111989865d315`; `Wan-AI/Wan2.1-I2V-14B-480P` @
