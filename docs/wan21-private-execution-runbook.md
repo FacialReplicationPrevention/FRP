@@ -10,6 +10,10 @@ are **pending**, and neither this document, a passing test nor a merged PR appro
 **Code:** [`frp.baseline.wan21_adapter`](../src/frp/baseline/wan21_adapter.py),
 [`frp.baseline.wan21_probe`](../src/frp/baseline/wan21_probe.py),
 [`frp.baseline.wan21_runtime`](../src/frp/baseline/wan21_runtime.py).
+**Milestone 004 (3C):** private storage, immutable per-call authorisation, deferred output commit,
+source/runtime hardening and the withdrawal ledger are specified in the
+[private-execution security design](private-execution-security-design.md) (PR #17) and described in
+§6 and §8 below. The 3C code is CPU-tested only and authorises nothing.
 **Pins:** source `Wan-Video/Wan2.1` @ `9737cba9c1c3c4d04b33fcad41c111989865d315`; checkpoint
 `Wan-AI/Wan2.1-I2V-14B-480P` @ `6b73f84e66371cdfe870c72acd6826e1d61cf279`. Published Hub digests
 are **expected values only**; no file has been downloaded or hashed by FRP.
@@ -131,14 +135,20 @@ Each is a separate, recorded human decision in private storage ([GPU readiness �
 7. `gpu_smoke_test` — explicit approval of one neutral-motion smoke run for named consenting references.
 
 Then, separately reviewed code (not in this PR): a private `AuthorisationProvider` that issues
-grants citing all seven records; a private `ReferenceProvider` and `ArtefactLocator`; a frozen,
-hashed execution environment and its digest; and a private entry point that constructs
-`TorchWanRuntime` + `Wan21UpstreamAdapter` + `Wan21BaselineExecutor`. The executor refuses
+grants citing all seven records, signed or otherwise authenticated and revocable (3C only enforces
+that a grant is unchanged within a call; it cannot establish who issued it); a private
+`ReferenceProvider` returning the approved reference bytes (SHA-256 recorded in the grant); a
+frozen, hashed execution environment and its digest; a trusted launcher that starts the interpreter
+as `python -I -B` with a sanitised environment; and a private entry point that constructs
+`LocalPrivateStore` (or an equivalent reviewed store) + `TorchWanRuntime` + `Wan21UpstreamAdapter` +
+`Wan21BaselineExecutor`. The executor refuses
 (`provenance_mismatch`, before load) unless the backend's declared `source_dir` resolves to the
 executor's own verified checkout, and the runtime separately checks that checkout is clean at the
-pinned commit before importing (see §10, item 3). The real `ArtefactLocator` must also fix an
-approved storage root, reject symlinked or unsafe parent directories and ensure private
-permissions before the adapter creates files; the test locator is not evidence of that.
+pinned commit before importing (see §10, item 3). The artefact store is now the reviewed
+`frp.private_storage.LocalPrivateStore`, which refuses a root that is not a canonical, owner-only
+directory on a local POSIX volume (Linux only; Windows and macOS are refused) and creates files
+exclusively without following links. That the volume is genuinely local block storage (not NFS/SMB/
+FUSE) is a private attestation, not something code can establish.
 
 ## 7. Operator procedure for a future approved smoke test (planned)
 
@@ -162,12 +172,19 @@ environment digest, `verified_before_load`, controls hash, seed, attempt index, 
 seconds, `gpu_seconds` (wall-clock duration of the upstream `generate` call, **not** GPU
 utilisation), failure category/detail and conditioning metadata.
 
-The adapter reserves `<run>/attempt-NN.mp4` and a hidden partial file next to it with exclusive
-create and mode 0600 (never overwrites, refuses symlinks and stale partial files), writes the
-partial file via upstream `cache_video` with its stdout discarded, then atomically replaces the
-reservation. On any failure or interruption both are removed. A killed process (SIGKILL, instance
-loss) can leave an empty reservation or a partial file, which then blocks that attempt index: the
-gate 3 deletion procedure must cover the store. `cache_video` encodes through an `ffmpeg`
+The adapter reserves `<run>/attempt-NN.mp4` and a hidden partial file next to it through the store
+(exclusive create, mode 0600, never overwrites, refuses symlinks and stale partial files) and writes
+the partial file via upstream `cache_video` with its stdout discarded. **`generate` only stages the
+output.** The executor commits (identity-checked atomic replace plus fsync of file and directory)
+only after the conditioning and output checks, a stop/expiry check and a final identical-grant
+check; if anything fails after the commit, the inode-checked rollback removes the committed file. A
+late rejection therefore leaves no final or partial MP4 (see design §3.3; tested with synthetic
+fixtures). Every attempt index is spent once in a keyed ledger whose markers survive deletion and
+withdrawal (design §3.4), so deleting files cannot re-enable an old attempt. A killed process
+(SIGKILL, instance loss) can leave an empty reservation or a partial file, which then blocks that
+attempt index: the gate 3 deletion procedure must cover the store. Whether the real encoder
+rewrites the partial under the same inode is unverified; if it does not, commit is refused
+(fail-closed) and this is a gate 7 finding. `cache_video` encodes through an `ffmpeg`
 subprocess, which the in-process network guard does not cover.
 
 ## 9. Smoke-test acceptance (technical only; Experiment 003 §6)
@@ -196,6 +213,7 @@ For Ada's review (not silently decided):
 5. **Process environment** (re-review P1): `TorchWanRuntime` always judges the real `os.environ`; the constructor accepts no mapping. `runtime_environment_problems(mapping)` remains a pure helper for isolated tests only. The in-process network guard is a backstop, not a substitute.
 6. **Environment digest** excludes CUDA driver/toolkit and container image digest; these belong in the private record.
 7. **Instrumentation effect**: proxies add attribute indirection and device-side equality checks to the run; their effect on timing is unmeasured (they do not change upstream arguments).
+8. **3C hardening and its limits** (see design §8): grant authenticity/revocation, the hard time/budget kill, the local-volume attestation and the retained-token decision remain private or human. `max_attempt_seconds` covers model load through commit but not weight hashing; Python cannot interrupt a model load, a denoiser step or ffmpeg. The live runtime refuses to start unless the interpreter is isolated (`-I`) with bytecode disabled, `LD_PRELOAD`, `LD_AUDIT` and `IMAGEIO_FFMPEG_EXE` are unset, and the source and checkpoint trees contain no symlinks, special files or foreign/writable entries. A fresh clone is required because ignored files make the checkout unclean. **[CPU-fake]**
 
 [i2v]: https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py
 [gen]: https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/generate.py

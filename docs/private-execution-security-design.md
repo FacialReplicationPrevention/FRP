@@ -33,7 +33,8 @@ resolved in code and is surfaced as a human/private decision instead of weakenin
 
 ## 2. Public code versus private integration
 
-**Proposed for public implementation (CPU-tested; not claimed until the code and tests land, §9):**
+**Implemented in public, CPU-tested code on this branch (results and limits in §9; each item is a
+CPU-side control only and authorises nothing):**
 
 1. A hardened local private store (`frp.private_storage`, standard library only): root posture
    checks, `private://` grammar, race-resistant reservation, **staged output with a deferred,
@@ -494,16 +495,16 @@ runbook and the GPU readiness protocol only where facts change.
 
 ## 7. Resolution of Ada's review (PR #17)
 
-| # | Finding | Resolution | Where | Test evidence (planned; actual in §9) |
+| # | Finding | Resolution | Where | Test evidence (files; actual results in §9) |
 | --- | --- | --- | --- | --- |
-| 1 | High: commit before executor checks | Deferred commit as the last fallible step; inode-checked rollback for post-commit failure | §3.3 | Adapter-success/executor-rejection matrix, no final/partial; rollback only removes the committed inode |
-| 2 | High: same id ≠ same grant | `grant_sha256` identity across A0–A3; any field change refused; exact type | §3.5 | Same-id/changed-field × A1/A2/A3 |
-| 3 | High: ledger vs withdrawal | Keyed tokens, tombstones that never reopen, retention rules, `erase_store` + `ERASED` sentinel, revocation-first order | §3.4 | Withdraw/restart/replay, higher index, in-flight withdrawal, erase |
-| 4 | Medium: time scope | Attempt clock from `_run_attempt` through commit; pre-commit gate; hard kill private | §3.5 | Expiry/stop/overrun during save |
-| 5 | Medium: fsync, symlinks, sticky, FUSE | fsync of data and directories; no symlinks in any tree; sticky rule; FUSE attestation gate | §3.1, §3.2, §3.6 | fsync observation, symlink matrix, sticky cases |
-| 6 | Medium: early reference hash | `check_attempt` before load, re-hash before decode | §3.5 | Mismatch before/after check |
-| — | Doc: "Implemented in public" | Reworded to "Proposed for public implementation" until code lands | §2, §9 | — |
-| — | Doc: AST ≠ proof | Stated as tripwire; human review and repository protection are the control | §3.10 | — |
+| 1 | High: commit before executor checks | Deferred commit as the last fallible step; inode-checked rollback for post-commit failure | §3.3 | `test_private_execution_security.py` late-rejection matrix (no final/partial MP4 survives), rollback tests; `test_private_storage.py` |
+| 2 | High: same id ≠ same grant | `grant_sha256` identity across A0–A3; any field change refused; exact type | §3.5 | `test_private_execution_security.py`: ten mutated fields × A1/A2/A3, revocation, subclass grant |
+| 3 | High: ledger vs withdrawal | Keyed tokens, tombstones that never reopen, retention rules, `erase_store` + `ERASED` sentinel, revocation-first order | §3.4 | `test_private_storage.py` and `test_private_execution_security.py`: withdraw/restart/replay, in-flight withdrawal, erase |
+| 4 | Medium: time scope | Attempt clock from `_run_attempt` through commit; pre-commit gate; hard kill private | §3.5 | `test_private_execution_security.py`: expiry, stop and overrun at commit |
+| 5 | Medium: fsync, symlinks, sticky, FUSE | fsync of data and directories; no symlinks in any tree; sticky rule; FUSE attestation gate | §3.1, §3.2, §3.6 | `test_private_storage.py`, `test_source_hardening.py` (fsync is observed through patched calls only; real durability is not testable on CPU CI) |
+| 6 | Medium: early reference hash | `check_attempt` before load, re-hash before decode | §3.5 | `test_private_execution_security.py`: mismatch before load creates no output; mismatch after check creates no output |
+| — | Doc: "Implemented in public" | Reworded; items are described as implemented only where code and tests exist (§9) | §2, §9 | — |
+| — | Doc: AST ≠ proof | Stated as tripwire; human review and repository protection are the control | §3.10 | `test_activation_tripwires.py` |
 
 ## 8. Blockers surfaced (not resolvable in public, CPU-safe code; no gate weakened)
 
@@ -520,5 +521,40 @@ runbook and the GPU readiness protocol only where facts change.
 
 ## 9. Implementation status
 
-*Design only at the time of writing. This section is updated by the implementation commits with the
-actual test, lint and CLI results; nothing here is claimed before it is run.*
+Results below were produced on this branch in a CPU-only Linux sandbox running as `root`
+(Python 3.12, no GPU, no torch, no weights, no real media). They are observations of that run, not
+approvals.
+
+| Check | Outcome |
+| --- | --- |
+| Baseline `main` before this work | 878 tests passed |
+| `pytest -q` (this branch) | **1082 passed** |
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 90 files already formatted |
+| `frp provenance provenance/model-candidates.yaml` | exit 0; "NOT READY for every candidate" |
+| `frp readiness readiness/wan21-i2v-baseline.yaml --provenance provenance/model-candidates.yaml` | exit 0; "Authorised to execute: NO"; gates pending |
+| `frp baseline-plan examples/manifests/synthetic-baseline-dry-run.yaml` | exit 0; planning only, 4 planned runs |
+| `frp plan examples/manifests/synthetic-dry-run.yaml --dry-run` | exit 0; planning only, 24 planned runs |
+| `frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir /tmp/frp-m004-3c-simulated-report` | exit 0; SIMULATED report written |
+
+**Mutation checks (manual, not committed):** disabling the grant-digest comparison made 32 tests in
+`test_private_execution_security.py` fail; disabling the inode-checked rollback made 1 fail. This
+shows those tests are sensitive to those two controls, not that the controls are sufficient.
+
+**Where each part landed:** `src/frp/private_storage.py` (§3.1–3.4); `baseline/authorisation.py`,
+`executor.py`, `backend.py`, `wan21_adapter.py`, `wan21_runtime.py`, `upstream.py` (§3.3, §3.5);
+`baseline/preflight.py` and `wan21_runtime.py` (§3.6); `review/access.py`, `review/security.py`,
+`review/session.py` (§3.9); `tests/test_activation_tripwires.py` (§3.10).
+
+**Not demonstrated, by construction (all remain private or human dependencies, §8):**
+- Because the sandbox runs as `root`, permission-denied behaviour is checked by `stat` inspection,
+  not by an unprivileged process being refused.
+- fsync ordering and crash durability are asserted through observed call order only; real power-loss
+  behaviour, NFS/FUSE semantics and sticky-directory behaviour on a GPU host are untested.
+- `TorchWanRuntime` was never constructed with real torch/CUDA; the isolated-interpreter and
+  environment checks are exercised on fake environments. Whether the real encoder keeps the staged
+  partial's inode (otherwise commit is refused, fail-closed) is unverified and is a gate 7 item.
+- Grant authenticity, revocation, hard kill, billing cap, the local-volume attestation and the
+  retained-token legal decision are not implemented and not testable here.
+- Checkpoint hashes, hardware, VRAM, runtime and cost remain unverified. All seven readiness gates
+  remain pending; no test, review or merge grants any of them.

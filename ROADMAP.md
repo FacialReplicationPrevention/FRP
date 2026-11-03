@@ -123,6 +123,15 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 - [ ] Real CLIP/VAE execution, VRAM, runtime, loader behaviour: **unverified**; need the seven gates and an approved smoke test.
 - [ ] Ada review.
 
+**PR 3C — Secure private execution infrastructure, CPU only (draft, [#17](https://github.com/FacialReplicationPrevention/FRP/pull/17), issue [#16](https://github.com/FacialReplicationPrevention/FRP/issues/16)).** NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE. Seven gates pending; merging authorises nothing. See the [security design](docs/private-execution-security-design.md).
+
+- [x] Hardened local private store (`frp.private_storage`): owner-only canonical roots, race-resistant reservation, **deferred output commit with inode-checked rollback** (a late rejection leaves no MP4), keyed attempt ledger and withdrawal tombstones that deletion cannot reopen. CPU-tested with synthetic fixtures only.
+- [x] Immutable per-call grants: expiry, artefact and reference scope, attempt cap, and an identical canonical grant required at four re-check points.
+- [x] Source/runtime hardening (scrubbed git inspection, no symlinks or foreign entries in the source and checkpoint trees, isolated interpreter, refused `LD_PRELOAD`/`LD_AUDIT`/`IMAGEIO_FFMPEG_EXE`) and fail-closed identifiable-review posture with grant expiry enforced per request.
+- [x] Regression tripwires that no granting provider, activation switch or live-construction path ships (not a proof; human review is the control).
+- [ ] Unverified and private: grant authenticity/revocation, hard kill and budget cap, local-volume attestation, retained-token decision, real encoder behaviour. See the unfilled [worksheet](docs/private-run-procurement-worksheet.md).
+- [ ] Independent Ada implementation review.
+
 **Later — Approved smoke test, real evaluator adapters, media import and empirical calibration (not started).** Each requires the separate human budget, licence, consent and storage approvals in [docs/gpu-readiness.md](docs/gpu-readiness.md).
 
 ### Phase 3 exit items

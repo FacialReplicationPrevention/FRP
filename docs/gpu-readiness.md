@@ -141,6 +141,13 @@ The control values come with required **output provenance**: a per-run record of
 - [ ] Gate 6: checkpoint download and local SHA-256 verification approved and completed.
 - [ ] Gate 7: smoke test approved for a stated, minimal set of consented references.
 
+Milestone 004 PR 3C adds CPU-only security infrastructure that a future private run would rely on
+(private storage, immutable per-call grants, deferred output commit, withdrawal ledger; see the
+[security design](private-execution-security-design.md)). It satisfies none of these boxes. The
+unfilled [procurement and gate worksheet](private-run-procurement-worksheet.md) lists the
+human/private dependencies it leaves open (local-volume attestation, grant authenticity and
+revocation, hard kill and budget cap, retained-token decision).
+
 Passing every box here would still not constitute scientific evidence: a smoke test shows only that a pipeline runs.
 
 ## Limitations

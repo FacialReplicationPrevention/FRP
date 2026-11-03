@@ -112,7 +112,9 @@ def test_the_cli_exposes_no_run_or_activation_command_or_option() -> None:
             assert word not in name.lower(), f"CLI name {name!r} suggests an activation path"
 
 
-@pytest.mark.parametrize("module", ["frp", "frp.cli", "frp.baseline", "frp.review"])
+@pytest.mark.parametrize(
+    "module", ["frp", "frp.cli", "frp.baseline", "frp.review", "frp.private_storage"]
+)
 def test_importing_the_package_loads_no_ml_or_imaging_stack(module: str) -> None:
     code = (
         f"import sys, {module}\n"
