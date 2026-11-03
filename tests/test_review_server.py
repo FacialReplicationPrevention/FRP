@@ -178,6 +178,7 @@ def test_selecting_frame_80_of_an_81_frame_clip_returns_that_exact_frame(tmp_pat
         provider=_TestGrant(),
         environ={},
         now=NOW,
+        clock=lambda: NOW,
     )
     view = next(i for i in controller.session_view()["items"] if i["key"] == item_ref)
     assert view["frame_count"] == 81

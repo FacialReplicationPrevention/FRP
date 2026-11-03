@@ -93,9 +93,13 @@ def inside_git_worktree(path: Path) -> bool:
 
 
 def group_or_world_accessible(path: Path) -> bool:
-    """True on POSIX if group or others have any permission on ``path``."""
+    """True if group or others may have any permission on ``path``.
+
+    Fails closed: POSIX mode bits say nothing about Windows NTFS ACLs, so off POSIX this is always
+    True and an identifiable store cannot be opened.
+    """
     if os.name != "posix":
-        return False
+        return True
     return bool(path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO))
 
 

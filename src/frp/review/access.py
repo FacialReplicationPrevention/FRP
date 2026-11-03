@@ -27,6 +27,7 @@ from typing import Annotated, Final, Literal, Protocol
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from frp.baseline.authorisation import RecordRef
+from frp.private_storage import private_root_problems
 from frp.review.records import ReviewerRoleCode, ReviewMode
 from frp.review.security import (
     group_or_world_accessible,
@@ -131,8 +132,13 @@ def authorise_review(
     *,
     environ: Mapping[str, str] | None = None,
     now: datetime | None = None,
-) -> None:
-    """Raise :class:`ReviewAccessDenied` unless every applicable check passes."""
+) -> datetime | None:
+    """Raise :class:`ReviewAccessDenied` unless every applicable check passes.
+
+    Returns the grant's expiry for an identifiable store (the session must stop serving media and
+    accepting records at that instant) and ``None`` for a synthetic store.
+    """
+    grant: ReviewAccessGrant | None = None
     if catalogue.content_class == "synthetic":
         problems = synthetic_store_problems(catalogue)
     else:
@@ -146,10 +152,17 @@ def authorise_review(
             problems.append("the store is inside a git working tree (risk of committing media)")
         if group_or_world_accessible(store.root):
             problems.append("the store directory is accessible to group or others")
+        # Ownership, symlinked parts and untrusted ancestors; POSIX local volumes only.
+        problems.extend(
+            problem
+            for problem in private_root_problems(store.root)
+            if problem not in problems and "git working tree" not in problem
+        )
         grant = provider.authorise(request)
         problems.extend(grant_problems(grant, request, now or datetime.now(UTC)))
     if problems:
         raise ReviewAccessDenied(problems)
+    return grant.expires_at if grant is not None else None
 
 
 __all__ = [
