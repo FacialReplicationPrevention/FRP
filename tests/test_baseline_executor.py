@@ -48,6 +48,7 @@ class Setup:
             authorisation=self.provider,
             source_inspector=kwargs.pop("inspector", FakeInspector()),
             stop=kwargs.pop("stop", None),
+            **{name: kwargs.pop(name) for name in ("clock", "timer") if name in kwargs},
         )
         assert not kwargs
 
@@ -144,6 +145,9 @@ def _request():
         checkpoint_revision="4" * 40,
         environment_sha256="5" * 64,
         expected_files={"a": "6" * 64},
+        identity_pseudonym="ID-001",
+        attempt_index=1,
+        artefact_base_uri="private://synthetic-store/baseline",
     )
 
 
@@ -264,7 +268,8 @@ def test_clip_and_vae_receive_the_same_reference_and_request_has_no_extension_sw
     assert isinstance(request, GenerationRequest)
     assert not any("extend" in name for name in GenerationRequest.__dataclass_fields__)
     refs = [n for n in GenerationRequest.__dataclass_fields__ if "reference" in n or n == "img"]
-    assert refs == ["reference"]  # a single reference field feeds both routes
+    # A single reference handle feeds both routes; the other field is only its approved digest.
+    assert refs == ["reference", "reference_sha256"]
     assert request.reference == FixedReferences().reference_for("SYN-101")
     outcome = s.executor.execute(s.plan.runs[1], 1)
     assert outcome.conditioning is not None
@@ -282,7 +287,7 @@ def test_generation_settings_are_passed_through_unchanged(tmp_path: Path) -> Non
     assert (request.sample_solver, request.sampling_steps, request.guide_scale) == ("unipc", 2, 5.0)
     assert request.max_area == 480 * 832
     assert request.offload_model is m.offload_model
-    assert request.deadline_seconds == 60.0
+    assert 0 < request.deadline_seconds <= 60.0  # the remaining end-to-end attempt budget
     assert request.output_uri == f"{ARTEFACT_BASE}/{run.run_id}/attempt-01.mp4"
 
 
@@ -441,6 +446,7 @@ def test_both_cfg_branches_using_the_same_unrelated_vae_tensor_is_rejected() -> 
         offload_model=False,
         output_uri="private://x/y.mp4",
         deadline_seconds=1.0,
+        reference_sha256="0" * 64,
     )
     token = request.reference.token
 

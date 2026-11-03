@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,7 @@ EXAMPLE_BASELINE = REPO_ROOT / "examples" / "manifests" / "synthetic-baseline-dr
 SOURCE_COMMIT = "9737cba9c1c3c4d04b33fcad41c111989865d315"
 ENV_SHA = hashlib.sha256(b"synthetic-environment").hexdigest()
 ARTEFACT_BASE = "private://synthetic-store/baseline"
+REFERENCE_SHA = hashlib.sha256(b"synthetic-reference").hexdigest()
 FILES = {"weights/a.bin": b"synthetic-a", "weights/b.bin": b"synthetic-b", "config.json": b"{}"}
 
 
@@ -140,6 +143,9 @@ class FakeBackend:
     requests: list[GenerationRequest] = field(default_factory=list)
     loaded_with: list[VerifiedCheckpoint] = field(default_factory=list)
     steps: int | None = None  # defaults to the request's sampling_steps
+    staged: set[str] = field(default_factory=set)
+    committed: set[str] = field(default_factory=set)
+    on_commit: Callable[[], None] | None = None  # test hook run just before publishing
 
     @property
     def info(self) -> BackendInfo:
@@ -160,9 +166,28 @@ class FakeBackend:
         if self.mode == "load_error":
             raise RuntimeError("secret-path-should-not-leak")
 
+    def check_attempt(self, request: GenerationRequest) -> None:
+        self.events.append("check_attempt")
+        if self.mode == "check_attempt_error":
+            raise RuntimeError("secret-reference-bytes-should-not-leak")
+
+    def commit_output(self, request: GenerationRequest) -> None:
+        self.events.append("commit")
+        if self.on_commit is not None:
+            self.on_commit()
+        if self.mode == "commit_error":
+            raise RuntimeError("secret-path-should-not-leak")
+        self.staged.discard(request.output_uri)
+        self.committed.add(request.output_uri)
+
+    def discard_output(self, request: GenerationRequest) -> None:
+        self.events.append("discard")
+        self.committed.discard(request.output_uri)
+
     def generate(self, request: GenerationRequest, stop: StopSignal) -> GenerationOutput:
         self.events.append("generate")
         self.requests.append(request)
+        self.staged.add(request.output_uri)
         if self.mode == "remote_call":
             import socket
 
@@ -223,6 +248,7 @@ class FakeBackend:
 
     def cleanup(self) -> None:
         self.events.append("cleanup")
+        self.staged.clear()
         if self.mode == "cleanup_error":
             raise RuntimeError
 
@@ -236,9 +262,18 @@ class RecordingProvider:
     def __init__(self, **overrides: Any) -> None:
         self.overrides = overrides
         self.requests: list[AuthorisationRequest] = []
+        now = datetime.now(UTC)
+        # Fixed per provider so every answer within one attempt is the identical grant.
+        self.issued_at = now - timedelta(minutes=1)
+        self.expires_at = now + timedelta(hours=1)
+        self.revoked_after: int | None = None  # deny every call after this many answers
+        self.mutate: Callable[[int, dict[str, Any]], None] | None = None
 
     def authorise(self, request: AuthorisationRequest) -> PrivateAuthorisation | None:
         self.requests.append(request)
+        call = len(self.requests)
+        if self.revoked_after is not None and call > self.revoked_after:
+            return None
         fields: dict[str, Any] = {
             "authorisation_id": "private-record-0001",
             "executor_mode": request.executor_mode,
@@ -251,6 +286,13 @@ class RecordingProvider:
             "expected_files": dict(request.expected_files),
             "gates": {gate: f"private-record-{n:04d}" for n, gate in enumerate(GATE_IDS, 1)},
             "max_attempt_seconds": 60.0,
+            "issued_at": self.issued_at,
+            "expires_at": self.expires_at,
+            "artefact_base_uri": request.artefact_base_uri,
+            "reference_sha256": {request.identity_pseudonym: REFERENCE_SHA},
+            "max_attempts_per_run": 3,
         }
         fields.update(self.overrides)
+        if self.mutate is not None:
+            self.mutate(call, fields)
         return PrivateAuthorisation(**fields)

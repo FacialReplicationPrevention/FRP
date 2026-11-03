@@ -22,7 +22,7 @@ stops accepting ratings if its reviewer opens Mode A concurrently.
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -87,6 +87,10 @@ _IDENTITY_FIELDS: Final = frozenset({"key", "judgement", "frame_index", "notes"}
 _QUALITY_FIELDS: Final = frozenset({"key", "status", "scores", "unscorable_reason", "notes"})
 
 
+class GrantExpired(Exception):
+    """The review access grant has expired; no further data may be read or recorded."""
+
+
 class SubmissionRejected(Exception):
     """A submitted judgement was invalid. ``problems`` are fixed descriptions."""
 
@@ -148,10 +152,18 @@ def _status_note(item: ReviewItem, status: ItemStatus) -> str:
 class ReviewController:
     """One open review session over one store."""
 
-    def __init__(self, store: ReviewStore, catalogue: ReviewCatalogue, session: ReviewSession):
+    def __init__(
+        self,
+        store: ReviewStore,
+        catalogue: ReviewCatalogue,
+        session: ReviewSession,
+        clock: Callable[[], datetime] | None = None,
+    ):
+        self._clock = clock or (lambda: datetime.now(UTC))
         self.store = store
         self.catalogue = catalogue
         self.session = session
+        self.grant_expires_at: datetime | None = None
         self._revealed: set[str] = set()
         self._viewed: set[tuple[str, str]] = set()
         self._lock = threading.Lock()
@@ -166,6 +178,7 @@ class ReviewController:
         provider: ReviewAccessProvider | None = None,
         environ: Mapping[str, str] | None = None,
         now: datetime | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> ReviewController:
         """Authorise, create the private session record and log the opening, or raise."""
         catalogue = store.load_catalogue()
@@ -178,7 +191,7 @@ class ReviewController:
             reviewer_role_code=reviewer_role_code,
             session_id=session_id,
         )
-        authorise_review(
+        expires_at = authorise_review(
             store, catalogue, request, provider or DenyAllReviewAccess(), environ=environ, now=now
         )
         blinding = None
@@ -218,7 +231,15 @@ class ReviewController:
         store.append_access_event(
             session_id=session_id, reviewer_role_code=reviewer_role_code, event="session_open"
         )
-        return cls(store, catalogue, session)
+        controller = cls(store, catalogue, session, clock)
+        controller.grant_expires_at = expires_at
+        return controller
+
+    def expired(self, now: datetime | None = None) -> bool:
+        """True once the grant has expired; media and records must then stop."""
+        return self.grant_expires_at is not None and (now or self._clock()) >= (
+            self.grant_expires_at
+        )
 
     @property
     def mode(self) -> ReviewMode:
@@ -288,7 +309,12 @@ class ReviewController:
     def _banners(self) -> list[str]:
         return [SIMULATED_BANNER if self.catalogue.simulated else PRIVATE_BANNER]
 
+    def require_unexpired(self) -> None:
+        if self.expired():
+            raise GrantExpired("the review access grant has expired")
+
     def session_view(self) -> dict[str, Any]:
+        self.require_unexpired()
         if self.mode == "blinded_quality":
             return self._quality_view()
         items = []
@@ -365,6 +391,7 @@ class ReviewController:
 
     def measurements(self, key: str) -> dict[str, Any] | None:
         """Mode A only: automated detection statuses and uncalibrated similarities, on request."""
+        self.require_unexpired()
         if self.mode != "identity_inspection":
             return None
         item = self.catalogue.item(key)
@@ -405,6 +432,7 @@ class ReviewController:
 
     def media(self, key: str, kind: str, index: int = 0) -> bytes | None:
         """Sanitised PNG bytes for a reference (Mode A only) or an output frame, else ``None``."""
+        self.require_unexpired()
         item = self._item_for_key(key)
         if item is None:
             return None
@@ -434,6 +462,8 @@ class ReviewController:
 
     def submit(self, payload: Any, now: datetime | None = None) -> str:
         """Validate a browser submission, write a new immutable record and return its id."""
+        if self.expired(now):
+            raise SubmissionRejected(["the review access grant has expired"])
         if not isinstance(payload, dict):
             raise SubmissionRejected(["submission must be a JSON object"])
         allowed = _IDENTITY_FIELDS if self.mode == "identity_inspection" else _QUALITY_FIELDS

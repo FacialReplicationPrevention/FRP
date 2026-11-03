@@ -116,7 +116,11 @@ class GenerationRequest:
     guide_scale: float
     offload_model: bool
     output_uri: str = field(repr=False)
+    # Remaining wall-clock budget of the attempt when generation starts (see the executor).
     deadline_seconds: float
+    # SHA-256 of the exact reference bytes the grant permits; the backend verifies the bytes it
+    # reads before decoding them.
+    reference_sha256: str = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,12 +177,35 @@ class Wan21Backend(Protocol):
         """Load models from a checkpoint whose files were just hashed. No downloads, ever."""
         ...
 
+    def check_attempt(self, request: GenerationRequest) -> None:
+        """Cheap pre-load check of everything about this attempt that needs no model.
+
+        Raise if the output location cannot be reserved (spent index, withdrawn run, bad store) or
+        the exact reference bytes do not match ``request.reference_sha256``. Bounded, hash-only:
+        nothing is decoded, no upstream module is imported, nothing is written.
+        """
+        ...
+
     def generate(self, request: GenerationRequest, stop: StopSignal) -> GenerationOutput:
-        """Generate one video, polling ``stop`` and honouring ``request.deadline_seconds``."""
+        """Generate one video, polling ``stop`` and honouring ``request.deadline_seconds``.
+
+        The video is only **staged**: it is not published until :meth:`commit_output`. The
+        executor runs every post-generation check first, so a rejected result leaves no file.
+        """
+        ...
+
+    def commit_output(self, request: GenerationRequest) -> None:
+        """Publish the staged output of ``request`` (the last fallible step of an attempt)."""
+        ...
+
+    def discard_output(self, request: GenerationRequest) -> None:
+        """Remove an output already committed for ``request`` (inode-checked; idempotent)."""
         ...
 
     def cleanup(self) -> None:
-        """Release per-attempt resources (e.g. free GPU memory). Called after every attempt."""
+        """Release per-attempt resources (e.g. free GPU memory) and discard any staged output.
+
+        Called after every attempt."""
         ...
 
     def close(self) -> None:

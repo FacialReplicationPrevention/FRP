@@ -11,8 +11,9 @@ Outcomes versus refusals:
   succeeded or failed. A success carries an artefact reference and verified conditioning metadata;
   a failure never carries an artefact.
 * ``execute`` raises :class:`ExecutionRefused` when it declined to start (not execution ready, not
-  authorised, dependency, provenance or weight checks failed). Nothing was loaded or generated,
-  so it is recorded as an *unexecuted* run, not as an attempt.
+  authorised, dependency, provenance or weight checks failed, or the authorisation was withdrawn
+  or altered after the model loaded). Nothing was decoded, generated or published (the model may
+  have been loaded), so it is recorded as an *unexecuted* run, not as an attempt.
 """
 
 from __future__ import annotations

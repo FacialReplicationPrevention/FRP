@@ -120,7 +120,7 @@ Read [the harness guide](docs/harness.md) for schema requirements, adapter inter
 | Shared context and contributor guidance | Documented |
 | CPU experiment harness | Milestone 001 (manifest + planner) and Milestone 002 (simulated pipeline) merged |
 | Model selection and architecture verification | Milestone 003 merged (pinned source review, provenance inventory); weight hashes, licence-use review and GPU quote still pending |
-| GPU baseline and calibration | **Milestone 004 in progress** — PR 1, PR 2 and PR 3A merged (readiness design; CPU-only executor contracts; CPU-only evaluation pipeline and private review viewer, synthetic demo only); PR 3B (gated Wan 2.1 adapter, CPU-fake tests only, unreachable without a private authorisation provider) in review; no gate approved, no GPU, download, inference or evaluation of real media run |
+| GPU baseline and calibration | **Milestone 004 in progress** — PR 1, PR 2 and PR 3A merged (readiness design; CPU-only executor contracts; CPU-only evaluation pipeline and private review viewer, synthetic demo only); PR 3B (gated Wan 2.1 adapter, CPU-fake tests only, unreachable without a private authorisation provider) in review; PR 3C (draft: CPU-only private-storage, immutable-grant and review-posture hardening; authorises nothing); no gate approved, no GPU, download, inference or evaluation of real media run |
 | Wan 2.1 conditioning pathway ablation | Not started |
 | Intrinsic model-level mitigation | Hypothesis |
 | Robustness and hardening | Future research |

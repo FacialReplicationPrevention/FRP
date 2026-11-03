@@ -81,6 +81,17 @@ The requirements below are normative for PR 3 and checkable in review.
 
 Package [`frp.review`](../src/frp/review/); commands `frp review-demo` and `frp review` (see the [harness guide](harness.md#baseline-evaluation-and-private-review-milestone-004-pr-3a)). **Only `DenyAllReviewAccess` ships, so stores labelled identifiable are always refused; the only content that can be opened is the procedurally generated synthetic demo.**
 
+### Identifiable-store posture (Milestone 004, PR 3C)
+
+Unchanged: only `DenyAllReviewAccess` ships, so identifiable stores are still always refused. When a
+future private provider grants access, 3C adds (CPU-tested, synthetic fixtures): the store must also
+satisfy the shared private-root check (canonical path with no symlinked parts, owned by the running
+user, owner-only, trusted ancestors); `group_or_world_accessible` now **fails closed off POSIX**
+(POSIX mode bits do not describe Windows NTFS ACLs, so identifiable stores are refused there);
+and the grant's `expires_at` is enforced on every media request and submission, not only at opening.
+Synthetic demo stores are unaffected. Reviewer-machine trust (OS, screen capture, backups, sync
+clients) remains outside software control.
+
 ### Modes as implemented
 
 - **Mode A (identity inspection).** Reference still on the left, output on the right. Play, pause, previous/next frame, a scrubber, and sampled-frame thumbnails at the catalogue's frame indices. The default is the first sampled later frame (never frame 0 automatically); frame 0 is labelled as the conditioned first frame. Zoom (1–4×) is applied to both panels. Automated detection statuses and similarities are **hidden until the reviewer asks for them**, are labelled *uncalibrated*, and whether they were revealed before a judgement is stored in the record. Failed, unexecuted and media-unavailable items, items whose registered output frames are missing or do not match their digests (`output_unreadable`), and items whose original reference is missing or unreadable (`reference_unavailable`), are listed with their status and can only be judged `not_assessable`. Every frame is re-verified when the view is built and again when a judgement is submitted. Judgements are `same_person`, `different_person`, `uncertain` and `not_assessable`, per clip or per frame, with optional private notes.

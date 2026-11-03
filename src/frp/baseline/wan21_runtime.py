@@ -58,6 +58,7 @@ from frp.baseline.preflight import (
 from frp.baseline.protocol import WAN21_SOURCE_COMMIT
 from frp.baseline.results import TensorMeta
 from frp.baseline.wan21_probe import TensorInspector
+from frp.private_storage import trusted_tree_problems
 
 UPSTREAM_TASK: Final = "i2v-14B"
 REQUIRED_MODULES: Final = (
@@ -79,6 +80,9 @@ REQUIRED_MODULES: Final = (
 MIN_TORCH_VERSION: Final = (2, 6)
 REQUIRED_OFFLINE_VARIABLES: Final = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
 UNSAFE_LOAD_VARIABLES: Final = ("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",)
+# Redirect which executable or shared object a subprocess or the loader runs (names only are ever
+# reported, never values). The encoder may spawn ffmpeg, so these are refused outright.
+UNSAFE_PROCESS_VARIABLES: Final = ("IMAGEIO_FFMPEG_EXE", "LD_PRELOAD", "LD_AUDIT")
 # Continuous integration and Codespaces are never execution environments for this runtime.
 REFUSED_ENVIRONMENT_VARIABLES: Final = ("CI", "GITHUB_ACTIONS", "CODESPACES", "CODESPACE_NAME")
 # ``msk`` contributes 4 channels ahead of the VAE latent (wan/image2video.py L210-L217, L249).
@@ -125,7 +129,9 @@ class UpstreamRuntime(TensorInspector, Protocol):
 
     def config_facts(self, pipeline: Any) -> UpstreamConfigFacts: ...
 
-    def open_reference(self, location: str) -> Any: ...
+    def decode_reference(self, data: bytes) -> Any:
+        """Decode already hash-verified reference bytes (never a path)."""
+        ...
 
     def image_size(self, image: Any) -> tuple[int, int]:
         """(height, width) of the opened reference."""
@@ -158,6 +164,18 @@ def runtime_environment_problems(environ: Mapping[str, str]) -> list[str]:
         problems.append(f"{', '.join(missing)} must be 1 so no hub download can be attempted")
     if any(environ.get(name) for name in UNSAFE_LOAD_VARIABLES):
         problems.append("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD must be unset (it disables safe loading)")
+    if present := [name for name in UNSAFE_PROCESS_VARIABLES if environ.get(name)]:
+        problems.append(f"{', '.join(present)} must be unset (it can redirect executed code)")
+    return problems
+
+
+def interpreter_problems(*, isolated: int, dont_write_bytecode: int) -> list[str]:
+    """The interpreter must ignore PYTHON* variables and the user site, and write no bytecode."""
+    problems = []
+    if not isolated:
+        problems.append("the interpreter must run in isolated mode (-I)")
+    if not dont_write_bytecode:
+        problems.append("the interpreter must not write bytecode (-B or PYTHONDONTWRITEBYTECODE)")
     return problems
 
 
@@ -213,6 +231,8 @@ class TorchWanRuntime:
         if not (source / "wan" / "image2video.py").is_file():
             return ["the source checkout does not contain the upstream wan package"]
         problems = []
+        if tree_problems := trusted_tree_problems(source):
+            problems.extend(f"source tree: {problem}" for problem in tree_problems)
         if self._inspector.head_commit(
             source
         ) != WAN21_SOURCE_COMMIT or not self._inspector.is_clean(source):
@@ -225,6 +245,11 @@ class TorchWanRuntime:
 
     def check_available(self) -> None:
         problems = runtime_environment_problems(os.environ)
+        problems.extend(
+            interpreter_problems(
+                isolated=sys.flags.isolated, dont_write_bytecode=sys.flags.dont_write_bytecode
+            )
+        )
         if missing := [name for name in REQUIRED_MODULES if importlib.util.find_spec(name) is None]:
             problems.append(f"{len(missing)} required upstream dependency module(s) are missing")
         try:
@@ -324,9 +349,9 @@ class TorchWanRuntime:
 
     # -- reference and output ----------------------------------------------------------------
 
-    def open_reference(self, location: str) -> Any:
+    def decode_reference(self, data: bytes) -> Any:
         image_module = importlib.import_module("PIL.Image")
-        with image_module.open(location) as image:  # generate.py L392: Image.open(...).convert
+        with image_module.open(io.BytesIO(data)) as image:  # generate.py L392: open(...).convert
             return image.convert("RGB")
 
     def image_size(self, image: Any) -> tuple[int, int]:

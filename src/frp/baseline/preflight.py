@@ -3,7 +3,11 @@
 * :func:`verify_checkpoint_files` hashes **every** file of a local checkpoint directory and
   compares the set and the SHA-256 digests with the separately approved expected manifest. Only a
   successful run issues a :class:`VerifiedCheckpoint`, which backends require in ``load``.
-* :class:`GitSourceInspector` reads the commit of a local source checkout and whether it is clean.
+* :class:`GitSourceInspector` reads the commit of a local source checkout and whether it is clean,
+  with a scrubbed environment and an explicit git directory and work tree, so ambient ``GIT_*``
+  variables, user or system configuration, a ``.git`` file or ``core.worktree`` cannot redirect
+  it to another repository. It is a consistency check, not protection against a same-user
+  attacker who can already rewrite the checkout and the index.
 * :func:`compute_environment_digest` turns a reported dependency set into a stable digest.
 * :func:`network_blocked` and :func:`prohibited_modules_loaded` back the "no remote inference or
   image-to-text service" control. Blocking is best effort within the current process (it does not
@@ -27,6 +31,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Protocol
+
+from frp.private_storage import trusted_tree_problems
 
 _CHUNK_BYTES: Final = 1 << 20
 # HuggingFace `local_dir` downloads keep resume metadata here; it is not a model file.
@@ -105,12 +111,21 @@ def _list_files(root: Path) -> tuple[dict[str, Path], int]:
     return found, symlinks
 
 
-def verify_checkpoint_files(root: Path, expected: Mapping[str, str]) -> VerifiedCheckpoint:
-    """Hash every file under ``root`` and require exactly the approved set with equal digests."""
+def verify_checkpoint_files(
+    root: Path, expected: Mapping[str, str], *, require_trusted_tree: bool = False
+) -> VerifiedCheckpoint:
+    """Hash every file under ``root`` and require exactly the approved set with equal digests.
+
+    ``require_trusted_tree`` (the executor sets it for live backends) additionally refuses a
+    tree, ancestors included, that has any symbolic link (``.cache`` too), special file, foreign
+    owner or group/other-writable entry, before a single file is hashed.
+    """
     if not expected:
         raise WeightsVerificationError(["no expected file manifest was supplied"])
     if not root.is_dir() or root.is_symlink():
         raise WeightsVerificationError(["the local checkpoint directory is missing"])
+    if require_trusted_tree and (tree_problems := trusted_tree_problems(root)):
+        raise WeightsVerificationError(tree_problems)
     found, symlinks = _list_files(root)
     problems = []
     if symlinks:
@@ -155,11 +170,48 @@ class SourceInspector(Protocol):
 class GitSourceInspector:
     """Reads a checkout with fixed ``git`` calls. Any failure reads as unverified."""
 
+    @staticmethod
+    def _environment() -> dict[str, str]:
+        # Nothing is inherited except PATH: no GIT_DIR/GIT_WORK_TREE/GIT_CONFIG_*/GIT_EXEC_PATH,
+        # no HOME (user configuration), no pager, no prompts.
+        return {
+            "PATH": os.environ.get("PATH", os.defpath),
+            "LC_ALL": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_OPTIONAL_LOCKS": "0",
+        }
+
+    @staticmethod
+    def _is_plain_checkout(path: Path) -> bool:
+        """A real directory with a real ``.git`` directory (not a link or a redirecting file)."""
+        git_dir = path / ".git"
+        return (
+            path.is_dir()
+            and not path.is_symlink()
+            and git_dir.is_dir()
+            and not git_dir.is_symlink()
+        )
+
     def _git(self, path: Path, *args: str) -> str | None:
         git = shutil.which("git")
-        if git is None or not path.is_dir():
+        if git is None or not self._is_plain_checkout(path):
             return None
-        command = [git, "-C", str(path), "-c", "core.fsmonitor=false", *args]
+        command = [
+            git,
+            "--git-dir",
+            str(path / ".git"),
+            "--work-tree",
+            str(path),  # overrides any core.worktree in the repository configuration
+            "--no-optional-locks",
+            "--no-replace-objects",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+            *args,
+        ]
         try:
             completed = subprocess.run(  # noqa: S603 - fixed arguments, no shell
                 command,
@@ -167,6 +219,8 @@ class GitSourceInspector:
                 text=True,
                 timeout=_GIT_TIMEOUT_SECONDS,
                 check=False,
+                env=self._environment(),
+                cwd=path,
             )
         except (OSError, subprocess.SubprocessError):
             return None
@@ -176,8 +230,14 @@ class GitSourceInspector:
         return self._git(path, "rev-parse", "HEAD")
 
     def is_clean(self, path: Path) -> bool:
-        # Untracked files count: extra .py files in a checkout could be imported.
-        return self._git(path, "status", "--porcelain") == ""
+        # Untracked *and ignored* files count: an ignored ``.pyc`` or extra ``.py`` in a checkout
+        # could be imported. Index flags that hide modifications also count.
+        if self._git(path, "status", "--porcelain", "--untracked-files=all", "--ignored") != "":
+            return False
+        flags = self._git(path, "ls-files", "-v")
+        if flags is None:
+            return False
+        return all(line[:1] == "H" for line in flags.splitlines())
 
 
 def compute_environment_digest(

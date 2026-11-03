@@ -7,17 +7,34 @@ Every ``execute`` call runs the same ordered gates; any failure before generatio
    checked before authorisation or any reference lookup;
 1. the manifest is complete (``NOT EXECUTION READY`` otherwise);
 2. a private authorisation, supplied by an ``AuthorisationProvider``, permits this specific
-   run, manifest, controls, pins, environment digest and expected weight hashes and references
-   all seven human gates (the default provider denies everything);
+   run, attempt, manifest, controls, pins, environment digest, artefact location and expected
+   weight hashes, is within its validity window, and references all seven human gates (the
+   default provider denies everything). The provider is asked again after preflight (A1), after
+   load (A2) and immediately before the output is committed (A3); every answer must carry the
+   *same canonical grant digest* as the first, so a changed expiry, scope or gate reference under
+   an unchanged ``authorisation_id`` is refused, as is a revocation;
 3. no prompt-extension or remote-service module is already imported;
 4. the backend reports its dependencies available (the shipped upstream backend is disabled);
 5. the source checkout is clean and at the pinned commit;
 6. the backend's reported software-environment digest equals the approved one;
 7. **every** local checkpoint file matches its approved SHA-256 (nothing extra, nothing missing).
 
-Only then is the backend asked to load (from a :class:`~frp.baseline.preflight.VerifiedCheckpoint`)
-and generate, with network access blocked. The returned conditioning metadata and output shape are
-verified; a violation turns the attempt into a failure with no artefact. Cleanup always runs.
+Only then is the backend asked to check the attempt (output reservable, approved reference
+bytes), load (from a :class:`~frp.baseline.preflight.VerifiedCheckpoint`) and generate, with network
+access blocked. Generation only *stages* the video. The returned conditioning metadata and output
+shape are verified, then the stop signal, the attempt deadline, the grant expiry and A3 are
+checked, and only then is the output committed; a violation turns the attempt into a failure with
+no artefact. After the commit the stop signal and the clock are checked again (a commit fsyncs and
+can be slow), and an error, a stop, an overrun of the deadline or grant expiry, or a failed cleanup
+rolls the committed file back (inode-checked), so a successful attempt never keeps an artefact that
+was published late or whose resources were not released. Cleanup always runs; a failed cleanup
+still halts the orchestrator (``cleanup_failed``) and the attempt index stays spent.
+
+``max_attempt_seconds`` bounds the wall-clock time from the start of the attempt (before model
+load) to the end of the commit: model load, reference handling, denoising, video saving and the
+commit itself. Python cannot interrupt a model load, a denoiser step, an encoder or an fsync, so
+overruns are detected at checkpoints, before the commit and again after it; the host/provider hard
+kill and billing cap are a private dependency.
 
 Using a mock backend exercises this control flow on CPU. A mock's successful outcome is **not** a
 Wan 2.1 inference: results from a non-live backend are marked ``simulated``.
@@ -25,6 +42,8 @@ Wan 2.1 inference: results from a non-live backend are marked ``simulated``.
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -36,6 +55,7 @@ from frp.baseline.authorisation import (
     DenyAllAuthorisation,
     PrivateAuthorisation,
     authorisation_problems,
+    grant_sha256,
 )
 from frp.baseline.backend import (
     ConditioningContractViolation,
@@ -132,6 +152,7 @@ class Wan21BaselineExecutor:
         self._timer = timer
         self._mode = "live" if backend.info.live else "mock"
         self._used_attempts: set[tuple[str, int]] = set()
+        self._grant_digest: str | None = None
         self._verified: VerifiedCheckpoint | None = None
         self._provenance: ExecutionProvenance | None = None
         self._refusal: ExecutionRefused | None = None
@@ -174,7 +195,14 @@ class Wan21BaselineExecutor:
         if self._planned.get(run.run_id) != run:
             raise ExecutionRefused("invalid_input")
 
-    def _authorise(self, run: BaselinePlannedRun) -> PrivateAuthorisation:
+    def _authorise(
+        self, run: BaselinePlannedRun, attempt_index: int, digest: str | None = None
+    ) -> tuple[PrivateAuthorisation | None, str | None]:
+        """Ask the provider; return ``(grant, digest)`` only if it fully authorises this attempt.
+
+        With ``digest`` (a later authorisation point) the grant must be byte-for-byte the one
+        first returned. The provider's own failures and any other answer are a denial.
+        """
         m = self._manifest
         request = AuthorisationRequest(
             run_id=run.run_id,
@@ -186,14 +214,28 @@ class Wan21BaselineExecutor:
             checkpoint_revision=m.checkpoint_revision or "",
             environment_sha256=m.software_environment_hash or "",
             expected_files=dict(m.checkpoint_hashes or {}),
+            identity_pseudonym=run.identity_pseudonym,
+            attempt_index=attempt_index,
+            artefact_base_uri=self._base_uri,
         )
         try:
             grant = self._authorisation.authorise(request)
+            if authorisation_problems(grant, request, self._clock()):
+                return None, None
+            observed = grant_sha256(grant)  # type: ignore[arg-type]
         except Exception:
-            raise ExecutionRefused("not_authorised") from None
-        if authorisation_problems(grant, request):
+            return None, None
+        if digest is not None and observed != digest:
+            return None, None
+        return grant, observed  # type: ignore[return-value]
+
+    def _require_authorised(
+        self, run: BaselinePlannedRun, attempt_index: int, digest: str | None = None
+    ) -> tuple[PrivateAuthorisation, str]:
+        grant, observed = self._authorise(run, attempt_index, digest)
+        if grant is None or observed is None:
             raise ExecutionRefused("not_authorised")
-        return grant  # type: ignore[return-value]
+        return grant, observed
 
     def _prepare(self, grant: PrivateAuthorisation) -> None:
         """Verify everything that must hold before loading; runs once, failure is remembered."""
@@ -242,7 +284,11 @@ class Wan21BaselineExecutor:
         if environment != m.software_environment_hash:
             raise ExecutionRefused("provenance_mismatch")
         try:
-            verified = verify_checkpoint_files(self._checkpoint_dir, grant.expected_files)
+            verified = verify_checkpoint_files(
+                self._checkpoint_dir,
+                grant.expected_files,
+                require_trusted_tree=self._backend.info.live,
+            )
         except PreflightError:
             raise ExecutionRefused("weights_verification_failed") from None
         self._verified = verified
@@ -260,17 +306,24 @@ class Wan21BaselineExecutor:
         self._check_run(run, attempt_index)
         if unset_execution_fields(self._manifest):
             raise ExecutionRefused("not_execution_ready")
-        grant = self._authorise(run)
+        grant, digest = self._require_authorised(run, attempt_index)  # A0
         self._prepare(grant)
+        # A1: the grant must be unchanged after the (slow) preflight and before any reference
+        # lookup; the first snapshot is kept for the rest of the attempt.
+        self._require_authorised(run, attempt_index, digest)
         try:
             reference = self._references.reference_for(run.identity_pseudonym)
             if not isinstance(reference, ReferenceHandle):
                 raise LookupError
         except Exception:
             raise ExecutionRefused("invalid_input") from None
-        self._used_attempts.add((run.run_id, attempt_index))
         request = self._build_request(run, attempt_index, reference, grant)
-        return self._run_attempt(request)
+        try:
+            self._backend.check_attempt(request)
+        except Exception:
+            raise ExecutionRefused("invalid_input") from None
+        self._used_attempts.add((run.run_id, attempt_index))
+        return self._run_attempt(run, request, grant, digest)
 
     def _build_request(
         self,
@@ -295,29 +348,68 @@ class Wan21BaselineExecutor:
             offload_model=bool(m.offload_model),
             output_uri=f"{self._base_uri}/{run.run_id}/attempt-{attempt_index:02d}.mp4",
             deadline_seconds=grant.max_attempt_seconds,
+            reference_sha256=grant.reference_sha256[run.identity_pseudonym],
         )
 
-    def _run_attempt(self, request: GenerationRequest) -> BaselineExecutionOutcome:
+    def _run_attempt(
+        self,
+        run: BaselinePlannedRun,
+        request: GenerationRequest,
+        grant: PrivateAuthorisation,
+        digest: str,
+    ) -> BaselineExecutionOutcome:
+        try:
+            return self._attempt(run, request, grant, digest)
+        except BaseException:
+            # Anything after the commit (including Ctrl-C) must not leave a published video behind.
+            self._rollback(request)
+            raise
+
+    def _remaining_seconds(self, grant: PrivateAuthorisation, t0: float) -> float:
+        budget = grant.max_attempt_seconds - (self._timer() - t0)
+        until_expiry = (grant.expires_at - self._clock()).total_seconds()
+        return min(budget, until_expiry)
+
+    def _attempt(
+        self,
+        run: BaselinePlannedRun,
+        request: GenerationRequest,
+        grant: PrivateAuthorisation,
+        digest: str,
+    ) -> BaselineExecutionOutcome:
         started_at = self._clock()
         t0 = self._timer()
         output: GenerationOutput | None = None
         summary: ConditioningSummary | None = None
         detail: FailureDetail | None = None
+        refused = False
         blocked_calls = 0
         stage = "load"
         try:
             try:
-                with network_blocked() as guard:
-                    try:
-                        if not self._loaded:
+                if not self._loaded:
+                    with network_blocked() as guard:
+                        try:
                             if self._verified is None:
                                 raise ModelLoadError
                             self._backend.load(self._verified)
                             self._loaded = True
-                        stage = "generate"
+                        finally:
+                            blocked_calls += guard.blocked_calls
+                # A2: after load and before any generation.
+                if self._authorise(run, request.attempt_index, digest)[0] is None:
+                    refused = True
+                    raise ExecutionRefused("not_authorised")
+                stage = "generate"
+                remaining = self._remaining_seconds(grant, t0)
+                if remaining <= 0:
+                    raise GenerationTimeout
+                request = dataclasses.replace(request, deadline_seconds=remaining)
+                with network_blocked() as guard:
+                    try:
                         output = self._backend.generate(request, self._stop)
                     finally:
-                        blocked_calls = guard.blocked_calls
+                        blocked_calls += guard.blocked_calls
             except GenerationInterrupted as exc:
                 detail = exc.reason
             except GenerationTimeout:
@@ -333,6 +425,9 @@ class Wan21BaselineExecutor:
                 detail = "output_contract_violation"
             except KeyboardInterrupt:
                 detail = "operator_abort"
+            except ExecutionRefused:
+                if not refused:
+                    raise
             except Exception:
                 detail = "model_load_error" if stage == "load" else "generation_error"
             if blocked_calls:
@@ -340,12 +435,26 @@ class Wan21BaselineExecutor:
             elif prohibited_modules_loaded():
                 # Overrides any other outcome: a remote-service import is an integrity failure.
                 detail = "prohibited_module_loaded"
+            if refused and detail is None:
+                # Cleanup below, then nothing was generated; the attempt did not happen.
+                self._used_attempts.discard((request.run_id, request.attempt_index))
+                raise ExecutionRefused("not_authorised")
             if detail is None and output is not None:
                 detail, summary = self._check_output(output, request)
             elif detail is None:
                 detail = "generation_error"
+            if detail is None:
+                detail = self._pre_commit_gate(run, request, digest, grant, t0)
+            if detail is None:
+                detail = self._commit(request)
+                if detail is None:
+                    detail = self._post_commit_gate(request, grant, t0)
         finally:
             cleanup_ok = self._cleanup()
+        if detail is None and not cleanup_ok:
+            # An attempt whose resources could not be released is not a retained success.
+            self._rollback(request)
+            detail = "generation_error"
         finished_at = self._clock()
         wall_seconds = max(0.0, self._timer() - t0)
         if detail is None and output is not None and summary is not None:
@@ -373,6 +482,47 @@ class Wan21BaselineExecutor:
             conditioning=summary,
             cleanup_ok=cleanup_ok,
         )
+
+    def _pre_commit_gate(
+        self,
+        run: BaselinePlannedRun,
+        request: GenerationRequest,
+        digest: str,
+        grant: PrivateAuthorisation,
+        t0: float,
+    ) -> FailureDetail | None:
+        """Last checks before the output is published (A3); ``None`` means commit."""
+        reason = self._stop.reason()
+        if reason is not None:
+            return reason
+        if self._remaining_seconds(grant, t0) <= 0:
+            return "timeout"
+        if self._authorise(run, request.attempt_index, digest)[0] is None:
+            return "operator_abort"
+        return None
+
+    def _post_commit_gate(
+        self, request: GenerationRequest, grant: PrivateAuthorisation, t0: float
+    ) -> FailureDetail | None:
+        """Re-check stop and clock after a (possibly slow, fsyncing) commit; roll back if late."""
+        detail: FailureDetail | None = self._stop.reason()
+        if detail is None and self._remaining_seconds(grant, t0) <= 0:
+            detail = "timeout"
+        if detail is not None:
+            self._rollback(request)
+        return detail
+
+    def _rollback(self, request: GenerationRequest) -> None:
+        # ``discard_output`` is inode-checked and a no-op when nothing was committed.
+        with contextlib.suppress(Exception):
+            self._backend.discard_output(request)
+
+    def _commit(self, request: GenerationRequest) -> FailureDetail | None:
+        try:
+            self._backend.commit_output(request)
+        except Exception:
+            return "generation_error"
+        return None
 
     def _check_output(
         self, output: GenerationOutput, request: GenerationRequest

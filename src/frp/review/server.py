@@ -29,7 +29,7 @@ from typing import Any, Final
 from urllib.parse import urlsplit
 
 from frp.review.security import ALLOWED_HOST_NAMES, SECURITY_HEADERS, is_loopback_address
-from frp.review.session import ReviewController, SubmissionRejected
+from frp.review.session import GrantExpired, ReviewController, SubmissionRejected
 
 MAX_BODY_BYTES: Final = 16 * 1024
 _PREFIX: Final = re.compile(r"^/s/(?P<token>[A-Za-z0-9_-]{43})(?P<rest>/[A-Za-z0-9_./-]*)$")
@@ -117,6 +117,14 @@ class ReviewApp:
     ) -> Response:
         if name in _STATIC:
             return Response(200, _STATIC[name][1], self._assets[name])
+        try:
+            return self._dispatch_data(name, params, headers, body)
+        except GrantExpired:
+            return Response(403, body=b"Review access grant expired")
+
+    def _dispatch_data(
+        self, name: str, params: dict[str, str], headers: Mapping[str, str], body: bytes
+    ) -> Response:
         if name == "session":
             return _json(200, self.controller.session_view())
         if name == "measurements":

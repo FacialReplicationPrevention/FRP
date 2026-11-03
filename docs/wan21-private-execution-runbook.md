@@ -10,6 +10,10 @@ are **pending**, and neither this document, a passing test nor a merged PR appro
 **Code:** [`frp.baseline.wan21_adapter`](../src/frp/baseline/wan21_adapter.py),
 [`frp.baseline.wan21_probe`](../src/frp/baseline/wan21_probe.py),
 [`frp.baseline.wan21_runtime`](../src/frp/baseline/wan21_runtime.py).
+**Milestone 004 (3C):** private storage, immutable per-call authorisation, deferred output commit,
+source/runtime hardening and the withdrawal ledger are specified in the
+[private-execution security design](private-execution-security-design.md) (PR #17) and described in
+§6 and §8 below. The 3C code is CPU-tested only and authorises nothing.
 **Pins:** source `Wan-Video/Wan2.1` @ `9737cba9c1c3c4d04b33fcad41c111989865d315`; checkpoint
 `Wan-AI/Wan2.1-I2V-14B-480P` @ `6b73f84e66371cdfe870c72acd6826e1d61cf279`. Published Hub digests
 are **expected values only**; no file has been downloaded or hashed by FRP.
@@ -58,7 +62,7 @@ Upstream links: `I2V` = [`wan/image2video.py`][i2v], `GEN` = [`generate.py`][gen
 | `environment_sha256` | Must equal the approved digest before hashing weights | Installed distributions (all versions per name) + Python version, metadata only | — | Coverage: CUDA driver/toolkit, GPU firmware and container image digest are **not** included |
 | `load(VerifiedCheckpoint)` | Only a checkpoint whose every file just matched the private approved SHA-256 manifest; network blocked | Rejects anything but a `VerifiedCheckpoint` and a second load; `device_name()` must equal `gpu_model`; `wan` imported only from the source checkout; `WanI2V(config=WAN_CONFIGS["i2v-14B"], checkpoint_dir, device_id, rank=0, t5_fsdp=False, dit_fsdp=False, use_usp=False, t5_cpu=False, init_on_cpu=True)`; loaded config must equal the pinned facts; INFO logging suppressed during load; failure → unload + `model_load_error`/`resource_exhausted` | Constructor [I2V L34-L131][init]; `WAN_CONFIGS` [configs L20-L28][cfgs]; dtypes [shared_config L10-L19][shared]; VAE dtype [vae.py L624][vaedtype] | Real VRAM, load time, loader safety in production, CUDA init behaviour |
 | `generate(request, stop)` | Request built from the exact planned run and frozen manifest; one `reference` field; no prompt-extension field; network blocked; after return: `output_problems`, `verify_conditioning`, prohibited modules | `map_request` (every upstream argument explicit, mismatch → refuse); open reference as `Image.open(..).convert("RGB")`; orientation and exact (h, w) check; probe; stop/deadline polled before each denoiser call; nested network guard that also catches swallowed refusals; same `output_problems` + `verify_conditioning` **before** writing; exclusive-create output, 0600, atomic replace | Signature [I2V L133-L144][sig]; image [GEN L392][img]; tensor + geometry [I2V L181-L193][geo]; seed [I2V L199-L201][seed]; negative prompt [I2V L219-L220][neg]; text [I2V L225-L226][t5]; CLIP [I2V L236][clip]; VAE [I2V L240-L249][vae]; CFG args [I2V L284-L296][args]; CFG calls [I2V L302-L319][calls]; save [GEN L575-L581][save] | Real CLIP/VAE execution; bit-exact CPU bicubic reproducibility used by the VAE input check; runtime per clip; determinism across hardware; probe overhead |
-| `cleanup()` | Called after every attempt (success, failure, `KeyboardInterrupt`); failure → `cleanup_ok: false` | Removes reserved/partial files; `gc.collect()` + `torch.cuda.empty_cache()` | — | Whether GPU memory is actually released after an interrupted offloaded run |
+| `cleanup()` | Called after every attempt (success, failure, `KeyboardInterrupt`); failure → `cleanup_ok: false` and the committed artefact is retracted (attempt fails, index stays spent) | Removes reserved/partial files; `gc.collect()` + `torch.cuda.empty_cache()` | — | Whether GPU memory is actually released after an interrupted offloaded run |
 | `close()` | Called once by the executor | Drops the pipeline and frees memory | — | — |
 
 ## 3. Control mapping
@@ -131,14 +135,20 @@ Each is a separate, recorded human decision in private storage ([GPU readiness �
 7. `gpu_smoke_test` — explicit approval of one neutral-motion smoke run for named consenting references.
 
 Then, separately reviewed code (not in this PR): a private `AuthorisationProvider` that issues
-grants citing all seven records; a private `ReferenceProvider` and `ArtefactLocator`; a frozen,
-hashed execution environment and its digest; and a private entry point that constructs
-`TorchWanRuntime` + `Wan21UpstreamAdapter` + `Wan21BaselineExecutor`. The executor refuses
+grants citing all seven records, signed or otherwise authenticated and revocable (3C only enforces
+that a grant is unchanged within a call; it cannot establish who issued it); a private
+`ReferenceProvider` returning the approved reference bytes (SHA-256 recorded in the grant); a
+frozen, hashed execution environment and its digest; a trusted launcher that starts the interpreter
+as `python -I -B` with a sanitised environment; and a private entry point that constructs
+`LocalPrivateStore` (or an equivalent reviewed store) + `TorchWanRuntime` + `Wan21UpstreamAdapter` +
+`Wan21BaselineExecutor`. The executor refuses
 (`provenance_mismatch`, before load) unless the backend's declared `source_dir` resolves to the
 executor's own verified checkout, and the runtime separately checks that checkout is clean at the
-pinned commit before importing (see §10, item 3). The real `ArtefactLocator` must also fix an
-approved storage root, reject symlinked or unsafe parent directories and ensure private
-permissions before the adapter creates files; the test locator is not evidence of that.
+pinned commit before importing (see §10, item 3). The artefact store is now the reviewed
+`frp.private_storage.LocalPrivateStore`, which refuses a root that is not a canonical, owner-only
+directory on a local POSIX volume (Linux only; Windows and macOS are refused) and creates files
+exclusively without following links. That the volume is genuinely local block storage (not NFS/SMB/
+FUSE) is a private attestation, not something code can establish.
 
 ## 7. Operator procedure for a future approved smoke test (planned)
 
@@ -162,12 +172,19 @@ environment digest, `verified_before_load`, controls hash, seed, attempt index, 
 seconds, `gpu_seconds` (wall-clock duration of the upstream `generate` call, **not** GPU
 utilisation), failure category/detail and conditioning metadata.
 
-The adapter reserves `<run>/attempt-NN.mp4` and a hidden partial file next to it with exclusive
-create and mode 0600 (never overwrites, refuses symlinks and stale partial files), writes the
-partial file via upstream `cache_video` with its stdout discarded, then atomically replaces the
-reservation. On any failure or interruption both are removed. A killed process (SIGKILL, instance
-loss) can leave an empty reservation or a partial file, which then blocks that attempt index: the
-gate 3 deletion procedure must cover the store. `cache_video` encodes through an `ffmpeg`
+The adapter reserves `<run>/attempt-NN.mp4` and a hidden partial file next to it through the store
+(exclusive create, mode 0600, never overwrites, refuses symlinks and stale partial files) and writes
+the partial file via upstream `cache_video` with its stdout discarded. **`generate` only stages the
+output.** The executor commits (identity-checked atomic replace plus fsync of file and directory)
+only after the conditioning and output checks, a stop/expiry check and a final identical-grant
+check; if anything fails after the commit, the inode-checked rollback removes the committed file. A
+late rejection therefore leaves no final or partial MP4 (see design §3.3; tested with synthetic
+fixtures). Every attempt index is spent once in a keyed ledger whose markers survive deletion and
+withdrawal (design §3.4), so deleting files cannot re-enable an old attempt. A killed process
+(SIGKILL, instance loss) can leave an empty reservation or a partial file, which then blocks that
+attempt index: the gate 3 deletion procedure must cover the store. Whether the real encoder
+rewrites the partial under the same inode is unverified; if it does not, commit is refused
+(fail-closed) and this is a gate 7 finding. `cache_video` encodes through an `ffmpeg`
 subprocess, which the in-process network guard does not cover.
 
 ## 9. Smoke-test acceptance (technical only; Experiment 003 §6)
@@ -196,6 +213,7 @@ For Ada's review (not silently decided):
 5. **Process environment** (re-review P1): `TorchWanRuntime` always judges the real `os.environ`; the constructor accepts no mapping. `runtime_environment_problems(mapping)` remains a pure helper for isolated tests only. The in-process network guard is a backstop, not a substitute.
 6. **Environment digest** excludes CUDA driver/toolkit and container image digest; these belong in the private record.
 7. **Instrumentation effect**: proxies add attribute indirection and device-side equality checks to the run; their effect on timing is unmeasured (they do not change upstream arguments).
+8. **3C hardening and its limits** (see design §8): grant authenticity/revocation, the hard time/budget kill, the local-volume attestation and the retained-token decision remain private or human. `max_attempt_seconds` covers model load through commit but not weight hashing; Python cannot interrupt a model load, a denoiser step or ffmpeg. The live runtime refuses to start unless the interpreter is isolated (`-I`) with bytecode disabled, `LD_PRELOAD`, `LD_AUDIT` and `IMAGEIO_FFMPEG_EXE` are unset, and the source and checkpoint trees contain no symlinks, special files or foreign/writable entries. A fresh clone is required because ignored files make the checkout unclean. **[CPU-fake]**
 
 [i2v]: https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/wan/image2video.py
 [gen]: https://github.com/Wan-Video/Wan2.1/blob/9737cba9c1c3c4d04b33fcad41c111989865d315/generate.py

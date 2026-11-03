@@ -16,16 +16,19 @@ import math
 import socket
 import sys
 import types
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from frp.baseline.backend import ReferenceHandle
 from frp.baseline.manifest import BaselineManifest
 from frp.baseline.preflight import VerifiedCheckpoint, sha256_of_file
 from frp.baseline.results import TensorMeta
 from frp.baseline.wan21_adapter import WAN21_I2V_REQUIRED_FILES, WAN21_UPSTREAM_PRECISION
 from frp.baseline.wan21_runtime import RuntimeUnavailable, UpstreamConfigFacts
-from tests.baseline_support import ARTEFACT_BASE, ENV_SHA, ready_manifest
+from frp.private_storage import LocalPrivateStore
+from tests.baseline_support import ENV_SHA, ready_manifest
 
 GPU = "synthetic-gpu"
 NEGATIVE_PROMPT = "synthetic config default negative prompt"
@@ -289,10 +292,10 @@ class FakeRuntime:
         overrides = {"negative_prompt": pipeline.sample_neg_prompt, **self.facts}
         return dataclasses.replace(PINNED_FACTS, **overrides)
 
-    def open_reference(self, location: str) -> FakeImage:
-        self.events.append("open_reference")
+    def decode_reference(self, data: bytes) -> FakeImage:
+        self.events.append("decode_reference")
         if self.mode == "unreadable":
-            raise OSError(f"secret cannot open {location}")
+            raise OSError("secret cannot decode")
         return self.image
 
     def image_size(self, image: FakeImage) -> tuple[int, int]:
@@ -333,17 +336,34 @@ class FakeRuntime:
         return condition.base is encoded
 
 
-class StoreLocator:
-    """Maps the synthetic private URIs onto a temporary directory (outside the repository)."""
+STORE_NAMESPACE = "synthetic-store"
+STORE_OUTPUT_BASE = f"private://{STORE_NAMESPACE}/outputs"
+REFERENCE_BYTES = b"synthetic-reference"  # not an image: the fake runtime never decodes it
 
-    def __init__(self, root: Path) -> None:
-        self.root = root
 
-    def local_path(self, artefact_uri: str) -> Path:
-        prefix = ARTEFACT_BASE + "/"
-        if not artefact_uri.startswith(prefix):
-            raise ValueError("not a synthetic store URI")
-        return self.root / artefact_uri[len(prefix) :]
+class StoreReferences:
+    """Opaque handles pointing at synthetic reference files inside the private test store."""
+
+    def reference_for(self, identity_pseudonym: str) -> ReferenceHandle:
+        name = f"{identity_pseudonym.lower()}.png"
+        return ReferenceHandle(
+            token=f"ref-{identity_pseudonym.lower()}",
+            location=f"private://{STORE_NAMESPACE}/references/{name}",
+        )
+
+
+def make_private_store(root: Path, pseudonyms: Iterable[str]) -> LocalPrivateStore:
+    """An owner-only store under ``root`` holding one synthetic reference file per pseudonym."""
+    root.mkdir(mode=0o700)
+    root.chmod(0o700)
+    references = root / "references"
+    references.mkdir(mode=0o700)
+    references.chmod(0o700)
+    for pseudonym in pseudonyms:
+        path = references / f"{pseudonym.lower()}.png"
+        path.write_bytes(REFERENCE_BYTES)
+        path.chmod(0o600)
+    return LocalPrivateStore(root, STORE_NAMESPACE)
 
 
 def make_wan_checkpoint(root: Path) -> dict[str, str]:

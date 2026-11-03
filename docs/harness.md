@@ -645,6 +645,23 @@ identifiable stores in remote environments regardless.
    `ReviewAccessProvider` (not implemented, separately reviewed) issues grants citing the consent
    and storage gates. Reviewers then use Mode A and, separately, Mode B on the reviewer machine.
 
+## Private execution infrastructure (Milestone 004, PR 3C — CPU only, authorises nothing)
+
+Specified in the [security design](private-execution-security-design.md); unfilled
+[worksheet](private-run-procurement-worksheet.md). Nothing here constructs the live runtime.
+
+- `frp.private_storage` (standard library only): `private_root_problems`, `trusted_tree_problems`,
+  `LocalPrivateStore` (reservation, staged output, identity-checked commit and rollback, keyed
+  attempt ledger, withdrawal tombstones, `erase_store`). Linux only; other platforms are refused.
+- The `Wan21Backend` protocol gains `check_attempt`, `commit_output` and `discard_output`;
+  `generate` only **stages** output and the executor commits after every check.
+- `PrivateAuthorisation` gains `issued_at`, `expires_at` (at most 24 h), `artefact_base_uri`,
+  `reference_sha256` and `max_attempts_per_run`; the executor requires the identical canonical grant
+  (`grant_sha256`) at four points and before commit. Results, readiness and provenance schemas are
+  unchanged. `DenyAllAuthorisation` and `DenyAllReviewAccess` remain the only providers shipped.
+- `max_attempt_seconds` covers model load through commit; the hard kill and budget cap are private.
+- `tests/test_activation_tripwires.py` is a regression tripwire, **not** a security proof.
+
 ## Gated Wan 2.1 upstream adapter (Milestone 004, PR 3B)
 
 Modules: [`frp.baseline.wan21_adapter`](../src/frp/baseline/wan21_adapter.py),
