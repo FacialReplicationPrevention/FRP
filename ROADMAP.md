@@ -114,14 +114,14 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 - [x] Synthetic demonstration (`frp review-demo`) and CPU tests for V1–V12 controls that software can check.
 - [x] Ada review.
 
-**PR 3B — Gated Wan 2.1 live backend adapter, CPU tests only (in review, [#13](https://github.com/FacialReplicationPrevention/FRP/issues/13)).** NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE.
+**PR 3B — Gated Wan 2.1 live backend adapter, CPU tests only (merged, [#13](https://github.com/FacialReplicationPrevention/FRP/issues/13)).** NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE.
 
 - [x] `Wan21UpstreamAdapter` mapping every argument of the pinned `WanI2V.generate` from the frozen manifest; unsupported settings refused before load (see the [runbook](docs/wan21-private-execution-runbook.md) contract map).
 - [x] Metadata-only instrumentation checking the same original reference on the CLIP and VAE first-frame routes and in both CFG branches; tested against a CPU fake only.
 - [x] Loader-safety assessment (`torch.load` without `weights_only` upstream): torch >= 2.6, offline hub settings, no extra pickle files, never in CI/Codespaces.
 - [x] Refusal paths tested to call neither load nor generate; fake-runtime results stay `simulated`.
 - [ ] Real CLIP/VAE execution, VRAM, runtime, loader behaviour: **unverified**; need the seven gates and an approved smoke test.
-- [ ] Ada review.
+- [x] Ada review.
 
 **PR 3C — Secure private execution infrastructure, CPU only (ready for review, no longer draft; Ada-approved, [#17](https://github.com/FacialReplicationPrevention/FRP/pull/17), issue [#16](https://github.com/FacialReplicationPrevention/FRP/issues/16)).** NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE. Seven gates pending; merging authorises nothing. See the [security design](docs/private-execution-security-design.md).
 
