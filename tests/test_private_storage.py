@@ -883,3 +883,140 @@ def test_fixed_clock_is_used_for_receipts(root: Path) -> None:
     moment = datetime(2030, 1, 1, tzinfo=UTC)
     store = LocalPrivateStore(root, NS, clock=lambda: moment)
     assert store.delete(out()).at == moment
+
+
+# -- one namespace per root ----------------------------------------------------------------------
+
+OTHER_NS = "ns2"
+
+
+def other_out(run: str = RUN, n: int = 1) -> str:
+    return f"private://{OTHER_NS}/outputs/{run}/attempt-{n:02d}.mp4"
+
+
+def test_first_use_binds_the_root_to_its_namespace(store: LocalPrivateStore, root: Path) -> None:
+    assert not (root / ps.NAMESPACE_FILE).exists()
+    assert store.problems() == []  # inspection never binds
+    assert not (root / ps.NAMESPACE_FILE).exists()
+    commit_one(store)
+    binding = root / ps.NAMESPACE_FILE
+    assert binding.read_bytes() == NS.encode()
+    assert stat.S_IMODE(binding.stat().st_mode) == 0o600
+    assert not [n for n in os.listdir(root) if n.endswith(".tmp")]
+
+
+def test_a_second_namespace_on_the_same_root_is_refused_everywhere(
+    store: LocalPrivateStore, root: Path
+) -> None:
+    commit_one(store)
+    put_reference(root)
+    intruder = LocalPrivateStore(root, OTHER_NS)
+    before = snapshot(root)
+    owner_remaining = store.remaining([RUN])
+    assert intruder.problems() == ["the private store root is bound to a different namespace"]
+    other_ref = f"private://{OTHER_NS}/references/ref-a.png"
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.read(other_ref)
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.delete(other_out())
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.delete(other_ref)
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.reserve(other_out(n=2))
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.check_reservable(other_out(OTHER_RUN))
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.withdraw([RUN], [other_ref])
+    assert intruder.remaining([RUN]) > 0  # unreadable counts as not withdrawn
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.stale_reservations()
+    with pytest.raises(StorageError, match="different namespace"):
+        intruder.erase_store(revoked_grants_confirmed=True)
+    assert snapshot(root) == before
+    assert (root / "outputs" / RUN / "attempt-01.mp4").exists()
+    assert (root / "references" / "ref-a.png").exists()
+    assert store.remaining([RUN]) == owner_remaining  # owner's state untouched
+
+
+def test_the_binding_survives_a_restart_and_the_owner_keeps_working(
+    store: LocalPrivateStore, root: Path
+) -> None:
+    commit_one(store)
+    reopened = LocalPrivateStore(root, NS)
+    assert reopened.problems() == []
+    with pytest.raises(StorageError):
+        reopened.reserve(out())  # attempt 1 stays spent
+    commit_one(reopened, n=2)
+
+
+@pytest.mark.parametrize("content", [b"", b"ns", b"ns1\n", b"x" * 200])
+def test_a_tampered_binding_is_refused(
+    store: LocalPrivateStore, root: Path, content: bytes
+) -> None:
+    commit_one(store)
+    (root / ps.NAMESPACE_FILE).write_bytes(content)
+    with pytest.raises(StorageError):
+        store.reserve(out(OTHER_RUN))
+    assert store.problems()
+
+
+def test_a_symlinked_or_loose_binding_is_refused(
+    store: LocalPrivateStore, root: Path, tmp_path: Path
+) -> None:
+    commit_one(store)
+    binding = root / ps.NAMESPACE_FILE
+    binding.chmod(0o644)
+    assert store.problems()
+    binding.chmod(0o600)
+    assert store.problems() == []
+    binding.unlink()
+    target = tmp_path / "elsewhere"
+    target.write_bytes(NS.encode())
+    binding.symlink_to(target)
+    assert store.problems()
+    with pytest.raises(StorageError):
+        store.reserve(out(OTHER_RUN))
+
+
+def test_a_lost_binding_race_is_resolved_against_the_winner(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    winner = LocalPrivateStore(root, NS)
+    loser = LocalPrivateStore(root, OTHER_NS)
+    real_create = LocalPrivateStore._create_namespace_binding
+    fired: list[bool] = []
+
+    def win_first(root_fd: int, expected: bytes) -> None:
+        if not fired:
+            fired.append(True)
+            winner.check_reservable(out())  # binds the root to NS before the loser's link lands
+        real_create(root_fd, expected)
+
+    monkeypatch.setattr(LocalPrivateStore, "_create_namespace_binding", staticmethod(win_first))
+    with pytest.raises(StorageError, match="different namespace"):
+        loser.check_reservable(other_out())
+    assert (root / ps.NAMESPACE_FILE).read_bytes() == NS.encode()
+    assert not [n for n in os.listdir(root) if n.endswith(".tmp")]
+
+
+def test_erasing_the_owner_namespace_still_seals_the_root(
+    store: LocalPrivateStore, root: Path
+) -> None:
+    commit_one(store)
+    store.erase_store(revoked_grants_confirmed=True)
+    assert snapshot(root) == {ps.ERASED_FILE}
+    for namespace in (NS, OTHER_NS):
+        assert LocalPrivateStore(root, namespace).problems()
+
+
+def test_distinct_roots_isolate_namespaces(tmp_path: Path) -> None:
+    stores = []
+    for namespace in (NS, OTHER_NS):
+        path = tmp_path / namespace
+        path.mkdir(mode=0o700)
+        path.chmod(0o700)
+        stores.append(LocalPrivateStore(path, namespace))
+    for store, uri in zip(stores, (out(), other_out()), strict=True):
+        res = store.reserve(uri)  # the same run id and attempt index are free in a new root
+        write_partial(res)
+        store.commit(res)

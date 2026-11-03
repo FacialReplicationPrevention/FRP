@@ -170,10 +170,18 @@ private/human dependency.**
      and re-authorisation with an identical grant;
   3. the executor builds the `ArtefactRef`/`ExecutionRecord` (pure, fallible work done *before* commit);
   4. `backend.commit_output(request)` → `OutputStore.commit` (below);
-  5. cleanup runs in `finally` as today.
+  5. **post-commit gate**: stop signal and clock (attempt deadline, grant expiry) are checked again,
+     because a commit fsyncs file and directory and can be slow; a stop or overrun triggers the same
+     inode-checked rollback and a `budget_stop`/`operator_abort`/`timeout` failure;
+  6. cleanup runs in `finally` as today; **a failed cleanup retracts the committed artefact**
+     (inode-checked rollback, `generation_error`, `cleanup_ok: false`), so cleanup failure never
+     leaves a "succeeded" record that keeps an MP4. The orchestrator still halts with
+     `cleanup_failed` and the attempt index stays spent. This is deliberately conservative: an
+     attempt whose resources were not released is not trusted to have produced a retained artefact.
 
   Any failure at 1–3 leaves **no final file**; cleanup discards the staged partial. If anything (including
-  `KeyboardInterrupt`) raises during or after 4 before the outcome is returned, the executor calls
+  `KeyboardInterrupt`) raises during or after 4 before the outcome is returned, or step 5 or 6
+  fails, the executor calls
   `backend.discard_output(request)`, an **inode-checked rollback** (`OutputStore.rollback`: unlink
   the final only if it is still the committed `(st_dev, st_ino)` regular file), then re-raises. So a
   recorded failure never has a surviving artefact, and a surviving artefact always has a success record.
@@ -191,7 +199,9 @@ private/human dependency.**
   stages successfully and the executor then rejects for each of: a late remote-call counter, a
   prohibited module appearing after generate, an `output_problems` violation, a conditioning
   violation, a stop signal, deadline overrun during the save, grant expiry during the save,
-  revocation before commit, and a changed grant before commit — each asserts **no final and no partial
+  revocation before commit, a changed grant before commit, **and a deadline overrun, grant expiry or
+  stop signal that lands during a slow commit** (after the file was published), and a **failed
+  cleanup after commit** — each asserts **no final and no partial
   MP4** remains, no ledger *reopening* (the index stays spent), and a failed record with no artefact.
   Success commits exactly one `0600` file after the checks. A commit that links and then raises
   (`KeyboardInterrupt` injected after the link) is rolled back by inode; a final replaced by another
@@ -248,6 +258,16 @@ private/human dependency.**
   leaves an empty `ERASED` sentinel. An erased root is refused by `problems()` for every future
   store instance, so an old grant **cannot replay against it**; a new run needs a new root and
   namespace (a grant binds the namespace via `artefact_base_uri`) and a new human decision.
+- **One namespace per root (Ada review 2, finding 2):** a physical root is bound to **one**
+  namespace. The first use writes an owner-only `NAMESPACE` file (staged, fsynced, no-replace
+  `link`, so it is never partial and a lost race is resolved against the winner); every later
+  operation from a store with a different namespace — read, delete, withdraw, reserve, check,
+  `remaining`, `stale_reservations` and `erase_store` — is refused with a fixed message and changes
+  nothing, and `problems()` reports the mismatch without binding. A symlinked, loose-mode, oversized
+  or altered binding is refused. Root reuse by a different namespace is therefore **not** permitted:
+  a new namespace needs a new root, key, ledger and attempt indices. `erase_store` removes the
+  binding with everything else; the `ERASED` sentinel still seals the root for every namespace.
+  Tests: `test_private_storage.py` ("one namespace per root").
   `revoked_grants_confirmed` is a deliberate friction flag, not an authorisation check: the code
   cannot see private grants, so grant revocation remains the private provider's job (§8).
 - **Anti-replay layering (none is claimed sufficient alone):** (i) grant expiry ≤ 24 h and canonical
@@ -324,7 +344,8 @@ private/human dependency.**
   interruptible by Python**; an overrun there is caught **after the fact** by the pre-commit gate,
   which refuses to commit (`timeout`) and leaves no file. The **hard** bound (SIGKILL/instance
   termination, provider billing cap, idle shutdown) is a **private dependency** independent of any
-  Python polling (§8).
+  Python polling (§8). The deadline therefore covers load through the **end of the commit**; the
+  executor checks it again after the commit (see §3.3, step 5).
 - **Pre-commit gate (executor):** in order — stop signal (`budget_stop`/`operator_abort`), attempt
   deadline `timer() − t0 > max_attempt_seconds` → `timeout`, `clock() ≥ expires_at` → `timeout`, A3.
   Clocks (`clock`, `timer`) are already injected into the executor so every case is testable.
@@ -420,7 +441,10 @@ private/human dependency.**
   a long-running session would outlive the grant's `expires_at`.
 - **Added:** the shared Linux-only posture check (§3.2) for identifiable stores; `authorise_review`
   returns the grant's expiry and the controller refuses every media and submission request at or
-  after it (synthetic stores have no expiry). Revocation during an open session is not polled; the
+  after it (synthetic stores have no expiry). Expiry gates **every** information-revealing read:
+  `session_view`, `measurements`, `media` and `submit` raise `GrantExpired` (or reject) in the
+  controller, and `ReviewApp` maps it centrally to HTTP 403 for `/api/session`, the measurements and
+  media routes. Only the static shell, which holds no study data, is served. Revocation during an open session is not polled; the
   reviewer closes the viewer. Tests use an injected clock with a test-only provider (as today).
 - **Residual:** screenshots, recordings, cloud-sync folders, OS indexing, swap and backups, a
   compromised OS or browser extensions. Full-disk encryption and the machine's suitability are
@@ -506,6 +530,15 @@ runbook and the GPU readiness protocol only where facts change.
 | — | Doc: "Implemented in public" | Reworded; items are described as implemented only where code and tests exist (§9) | §2, §9 | — |
 | — | Doc: AST ≠ proof | Stated as tripwire; human review and repository protection are the control | §3.10 | `test_activation_tripwires.py` |
 
+### Resolution of Ada's implementation review (commit `547c049`)
+
+| # | Finding | Resolution | Where |
+| --- | --- | --- | --- |
+| 1 | High: review expiry did not gate `session_view`/`measurements` | Every data read checks expiry in the controller; the server returns 403 centrally; server-level tests for all four data endpoints, and a synthetic store is unaffected | §3.9, `test_review_posture.py` |
+| 2 | High: namespace not bound to the physical store | One namespace per root, bound on first use and verified on every operation including erase; root reuse is refused | §3.4, `test_private_storage.py` |
+| 3 | Medium: cleanup failure kept a "succeeded" MP4 | Decision: cleanup failure **retracts** the artefact; the claim "any failure after commit rolls back" now holds for this case | §3.3, `test_private_execution_security.py`, `test_wan21_adapter.py` |
+| 4 | Medium: expiry could pass during a slow commit | Post-commit stop/clock check with inode-checked rollback; tests advance time/stop inside the commit | §3.3, §3.5, `test_private_execution_security.py` |
+
 ## 8. Blockers surfaced (not resolvable in public, CPU-safe code; no gate weakened)
 
 1. **Retained pseudonymous tokens (gate 2/3, human/legal).** Whether a keyed per-run token and
@@ -528,7 +561,7 @@ approvals.
 | Check | Outcome |
 | --- | --- |
 | Baseline `main` before this work | 878 tests passed |
-| `pytest -q` (this branch) | **1082 passed** |
+| `pytest -q` (this branch) | **1100 passed** |
 | `ruff check .` | All checks passed |
 | `ruff format --check .` | 90 files already formatted |
 | `frp provenance provenance/model-candidates.yaml` | exit 0; "NOT READY for every candidate" |
@@ -536,6 +569,8 @@ approvals.
 | `frp baseline-plan examples/manifests/synthetic-baseline-dry-run.yaml` | exit 0; planning only, 4 planned runs |
 | `frp plan examples/manifests/synthetic-dry-run.yaml --dry-run` | exit 0; planning only, 24 planned runs |
 | `frp simulate examples/manifests/synthetic-dry-run.yaml --report-dir /tmp/frp-m004-3c-simulated-report` | exit 0; SIMULATED report written |
+
+Counts above include the tests added for Ada's implementation review (§7).
 
 **Mutation checks (manual, not committed):** disabling the grant-digest comparison made 32 tests in
 `test_private_execution_security.py` fail; disabling the inode-checked rollback made 1 fail. This

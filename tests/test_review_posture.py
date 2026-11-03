@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,7 +12,8 @@ import pytest
 from frp.review import security
 from frp.review.access import ReviewAccessDenied, ReviewAccessRequest, authorise_review
 from frp.review.records import ReviewMode
-from frp.review.session import ReviewController, SubmissionRejected
+from frp.review.server import ReviewApp
+from frp.review.session import GrantExpired, ReviewController, SubmissionRejected
 from tests.review_support import find_item, make_demo_store, open_session, rewrite_catalogue
 from tests.test_review_security import NOW, _grant, _make_identifiable, _request
 
@@ -62,10 +64,62 @@ def test_media_and_submissions_stop_at_the_grant_expiry(tmp_path: Path) -> None:
 
     clock[0] = expiry  # at, not after, the expiry
     assert controller.expired()
-    assert controller.media(key, "frame", 0) is None
-    assert controller.media(key, "reference") is None
+    with pytest.raises(GrantExpired):
+        controller.media(key, "frame", 0)
+    with pytest.raises(GrantExpired):
+        controller.media(key, "reference")
+    with pytest.raises(GrantExpired):
+        controller.session_view()
+    with pytest.raises(GrantExpired):
+        controller.measurements(key)
     with pytest.raises(SubmissionRejected, match="expired"):
         controller.submit({"key": key})
+
+
+def test_server_stops_every_data_endpoint_at_the_grant_expiry(tmp_path: Path) -> None:
+    expiry = NOW + timedelta(hours=1)
+    clock = [NOW]
+    controller = _open(tmp_path, expiry, clock)
+    app = ReviewApp(controller)
+    key = _item_with_output(controller)
+    host = {"host": "127.0.0.1"}
+    base = f"/s/{app.token}"
+    paths = (
+        "/api/session",
+        f"/api/items/{key}/measurements",
+        f"/media/{key}/frame/0",
+        f"/media/{key}/reference",
+    )
+    assert all(app.handle("GET", base + p, host).status == 200 for p in paths)
+
+    clock[0] = expiry
+    for path in paths:
+        response = app.handle("GET", base + path, host)
+        assert response.status == 403
+        assert b"similarity" not in response.body
+    body = json.dumps({"key": key}).encode()
+    posted = app.handle(
+        "POST",
+        base + "/api/records",
+        {
+            "host": "127.0.0.1",
+            "origin": "http://127.0.0.1",
+            "content-type": "application/json",
+        },
+        body,
+    )
+    assert posted.status == 400
+    assert app.handle("GET", base + "/", host).status == 200  # static shell holds no data
+
+
+def test_server_keeps_serving_a_synthetic_store_without_expiry(tmp_path: Path) -> None:
+    app = ReviewApp(open_session(make_demo_store(tmp_path / "store"), "identity_inspection"))
+    key = _item_with_output(app.controller)
+    host = {"host": "127.0.0.1"}
+    clock_far = datetime(2200, 1, 1)
+    assert not app.controller.expired(clock_far)
+    for path in ("/api/session", f"/api/items/{key}/measurements"):
+        assert app.handle("GET", f"/s/{app.token}{path}", host).status == 200
 
 
 def test_a_submission_dated_at_or_after_expiry_is_refused_even_if_the_clock_is_earlier(

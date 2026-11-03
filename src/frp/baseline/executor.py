@@ -24,12 +24,17 @@ bytes), load (from a :class:`~frp.baseline.preflight.VerifiedCheckpoint`) and ge
 access blocked. Generation only *stages* the video. The returned conditioning metadata and output
 shape are verified, then the stop signal, the attempt deadline, the grant expiry and A3 are
 checked, and only then is the output committed; a violation turns the attempt into a failure with
-no artefact, and any error after the commit rolls the committed file back. Cleanup always runs.
+no artefact. After the commit the stop signal and the clock are checked again (a commit fsyncs and
+can be slow), and an error, a stop, an overrun of the deadline or grant expiry, or a failed cleanup
+rolls the committed file back (inode-checked), so a successful attempt never keeps an artefact that
+was published late or whose resources were not released. Cleanup always runs; a failed cleanup
+still halts the orchestrator (``cleanup_failed``) and the attempt index stays spent.
 
 ``max_attempt_seconds`` bounds the wall-clock time from the start of the attempt (before model
-load) to the commit: model load, reference handling, denoising and video saving. Python cannot
-interrupt a model load, a denoiser step or an encoder, so overruns are detected at checkpoints and
-before commit; the host/provider hard kill and billing cap are a private dependency.
+load) to the end of the commit: model load, reference handling, denoising, video saving and the
+commit itself. Python cannot interrupt a model load, a denoiser step, an encoder or an fsync, so
+overruns are detected at checkpoints, before the commit and again after it; the host/provider hard
+kill and billing cap are a private dependency.
 
 Using a mock backend exercises this control flow on CPU. A mock's successful outcome is **not** a
 Wan 2.1 inference: results from a non-live backend are marked ``simulated``.
@@ -357,9 +362,7 @@ class Wan21BaselineExecutor:
             return self._attempt(run, request, grant, digest)
         except BaseException:
             # Anything after the commit (including Ctrl-C) must not leave a published video behind.
-            # ``discard_output`` is inode-checked and a no-op when nothing was committed.
-            with contextlib.suppress(Exception):
-                self._backend.discard_output(request)
+            self._rollback(request)
             raise
 
     def _remaining_seconds(self, grant: PrivateAuthorisation, t0: float) -> float:
@@ -444,8 +447,14 @@ class Wan21BaselineExecutor:
                 detail = self._pre_commit_gate(run, request, digest, grant, t0)
             if detail is None:
                 detail = self._commit(request)
+                if detail is None:
+                    detail = self._post_commit_gate(request, grant, t0)
         finally:
             cleanup_ok = self._cleanup()
+        if detail is None and not cleanup_ok:
+            # An attempt whose resources could not be released is not a retained success.
+            self._rollback(request)
+            detail = "generation_error"
         finished_at = self._clock()
         wall_seconds = max(0.0, self._timer() - t0)
         if detail is None and output is not None and summary is not None:
@@ -491,6 +500,22 @@ class Wan21BaselineExecutor:
         if self._authorise(run, request.attempt_index, digest)[0] is None:
             return "operator_abort"
         return None
+
+    def _post_commit_gate(
+        self, request: GenerationRequest, grant: PrivateAuthorisation, t0: float
+    ) -> FailureDetail | None:
+        """Re-check stop and clock after a (possibly slow, fsyncing) commit; roll back if late."""
+        detail: FailureDetail | None = self._stop.reason()
+        if detail is None and self._remaining_seconds(grant, t0) <= 0:
+            detail = "timeout"
+        if detail is not None:
+            self._rollback(request)
+        return detail
+
+    def _rollback(self, request: GenerationRequest) -> None:
+        # ``discard_output`` is inode-checked and a no-op when nothing was committed.
+        with contextlib.suppress(Exception):
+            self._backend.discard_output(request)
 
     def _commit(self, request: GenerationRequest) -> FailureDetail | None:
         try:

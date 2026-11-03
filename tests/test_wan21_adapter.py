@@ -727,11 +727,14 @@ def test_deadline_is_enforced_inside_the_denoising_loop(tmp_path: Path) -> None:
     assert len(s.pipeline.model.calls) < 2 * s.manifest.sampling_steps
 
 
-def test_cleanup_failure_is_reported(tmp_path: Path) -> None:
+def test_cleanup_failure_is_reported_and_retracts_the_committed_artefact(tmp_path: Path) -> None:
     s = Setup(tmp_path, runtime=FakeRuntime(mode="release_error"))
     outcome = s.executor.execute(s.run, 1)
-    assert outcome.execution.status == "succeeded"
     assert outcome.cleanup_ok is False
+    assert outcome.execution.status == "failed"
+    assert outcome.execution.artefact is None
+    assert outcome.conditioning is None
+    assert s.files() == []
 
 
 def test_close_releases_the_pipeline(tmp_path: Path) -> None:

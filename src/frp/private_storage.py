@@ -13,6 +13,10 @@ implements the storage contract in ``docs/private-execution-security-design.md``
   result *before* anything is published), with an inode-checked ``rollback``;
 * a keyed attempt ledger (attempt markers and withdrawal tombstones named by an HMAC token, never by
   run id) that deletion and withdrawal never reopen, and an irreversible ``erase_store``;
+* one namespace per root: the first use binds the root to its namespace in a ``NAMESPACE`` file and
+  every later use (read, delete, withdraw, reserve, erase) by a different namespace is refused, so
+  a root is never shared between grant-bound ``artefact_base_uri`` namespaces; a new namespace needs
+  a new root (and therefore a new key, ledger and attempt indices);
 * durability: file data and parent directory entries are fsynced before a promise is made.
 
 Platform assumptions (not claimed beyond them): Linux local block storage with working ``link``,
@@ -47,6 +51,7 @@ KEY_BYTES: Final = 32
 KEY_FILE: Final = "ledger.key"
 ERASED_FILE: Final = "ERASED"
 WITHDRAWN_FILE: Final = "withdrawn"
+NAMESPACE_FILE: Final = "NAMESPACE"
 
 _COMPONENT: Final = r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
 _RUN_ID: Final = r"[A-Z0-9][A-Z0-9-]{2,63}-R[0-9]{4,}"
@@ -72,6 +77,10 @@ class StorageError(Exception):
 
 
 # -- posture checks ---------------------------------------------------------------------------
+
+
+class NamespaceMismatch(StorageError):
+    """The root is already bound to a different namespace."""
 
 
 def _platform_problem() -> str | None:
@@ -316,17 +325,23 @@ class LocalPrivateStore:
         if problems:
             return problems
         try:
-            with self._root_fd(check_posture=False) as root_fd:
+            with self._root_fd(check_posture=False, bind=False) as root_fd:
                 if _exists(root_fd, ERASED_FILE):
                     return ["the store was erased and can never be used again"]
                 if _exists(root_fd, "ledger") and self._load_key(root_fd, create=False) is None:
                     return ["the attempt ledger exists but its key is missing"]
-        except (StorageError, OSError):
+        except NamespaceMismatch as exc:
+            return [str(exc)]
+        except StorageError:
+            return ["the private store could not be inspected safely"]
+        except OSError:
             return ["the private store could not be inspected safely"]
         return []
 
     @contextlib.contextmanager
-    def _root_fd(self, *, check_posture: bool = True, allow_erased: bool = False) -> Iterator[int]:
+    def _root_fd(
+        self, *, check_posture: bool = True, allow_erased: bool = False, bind: bool = True
+    ) -> Iterator[int]:
         if check_posture and private_root_problems(self._root):
             raise StorageError("the private store root is not acceptable")
         try:
@@ -337,9 +352,67 @@ class LocalPrivateStore:
             self._verify_dir(fd)
             if not allow_erased and _exists(fd, ERASED_FILE):
                 raise StorageError("the store was erased and can never be used again")
+            self._check_namespace(fd, bind=bind)
             yield fd
         finally:
             os.close(fd)
+
+    def _check_namespace(self, root_fd: int, *, bind: bool) -> None:
+        """Refuse a root bound to another namespace; bind an unbound root when ``bind`` is true."""
+        expected = self._namespace.encode("ascii")
+        flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+        for _ in range(2):
+            try:
+                fd = os.open(NAMESPACE_FILE, flags, dir_fd=root_fd)
+            except FileNotFoundError:
+                if not bind:
+                    return
+                self._create_namespace_binding(root_fd, expected)
+                continue
+            except OSError:
+                raise StorageError("the namespace binding could not be opened safely") from None
+            try:
+                info = os.fstat(fd)
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.geteuid()
+                    or info.st_mode & 0o077
+                    or info.st_nlink != 1
+                    or info.st_size > len(expected) + 64
+                ):
+                    raise StorageError("the namespace binding is not an owner-only regular file")
+                bound = os.read(fd, len(expected) + 65)
+            finally:
+                os.close(fd)
+            if not hmac.compare_digest(bound, expected):
+                raise NamespaceMismatch("the private store root is bound to a different namespace")
+            return
+        raise StorageError("the namespace binding could not be created")
+
+    @staticmethod
+    def _create_namespace_binding(root_fd: int, expected: bytes) -> None:
+        """Publish the binding atomically (write, fsync, no-replace link) so it is never partial."""
+        staging = f"{NAMESPACE_FILE}.{secrets.token_hex(8)}.tmp"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+        try:
+            fd = os.open(staging, flags, 0o600, dir_fd=root_fd)
+        except OSError:
+            raise StorageError("the namespace binding could not be created") from None
+        try:
+            try:
+                os.write(fd, expected)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            # Losing a race is fine: the caller verifies whichever binding won.
+            with contextlib.suppress(FileExistsError):
+                os.link(staging, NAMESPACE_FILE, src_dir_fd=root_fd, dst_dir_fd=root_fd)
+            _fsync_dir(root_fd)
+        except OSError:
+            raise StorageError("the namespace binding could not be created") from None
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(staging, dir_fd=root_fd)
 
     @staticmethod
     def _verify_dir(fd: int) -> None:
@@ -899,6 +972,7 @@ class LocalPrivateStore:
 __all__ = [
     "ERASED_FILE",
     "MAX_REFERENCE_BYTES",
+    "NAMESPACE_FILE",
     "DeletionReceipt",
     "LocalPrivateStore",
     "OutputStore",

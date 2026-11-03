@@ -215,6 +215,85 @@ def test_withdrawal_during_an_attempt_prevents_the_commit(tmp_path: Path) -> Non
         s.private.check_reservable(f"{exec_base()}/{s.run.run_id}/attempt-02.mp4")
 
 
+def slow_commit_adapter(on_commit: Callable[[], None]) -> type:
+    """An adapter whose commit really publishes the file, then 'takes' time or gets a stop."""
+
+    class SlowCommit(Wan21UpstreamAdapter):
+        def commit_output(self, request: GenerationRequest) -> None:
+            super().commit_output(request)
+            assert any(p.name == "attempt-01.mp4" for p in self.files())  # published
+            on_commit()
+
+        files: Callable[[], list[Path]]
+
+    return SlowCommit
+
+
+def _slow_commit_setup(tmp_path: Path, on_commit: Callable[[], None], **kwargs: Any) -> Setup:
+    adapter_class = slow_commit_adapter(on_commit)
+    s = Setup(tmp_path, adapter_class=adapter_class, **kwargs)
+    s.adapter.files = s.files
+    return s
+
+
+def test_deadline_overrun_during_a_slow_commit_rolls_the_committed_file_back(
+    tmp_path: Path,
+) -> None:
+    class Timer:
+        now = 0.0
+
+        def __call__(self) -> float:
+            return self.now
+
+    timer = Timer()
+    s = _slow_commit_setup(
+        tmp_path, lambda: setattr(timer, "now", 3600.0), executor_kwargs={"timer": timer}
+    )
+    assert_no_output_survives(s, s.executor.execute(s.run, 1), "timeout")
+
+
+def test_grant_expiry_during_a_slow_commit_rolls_the_committed_file_back(tmp_path: Path) -> None:
+    class Wall:
+        skew = timedelta()
+
+        def __call__(self) -> datetime:
+            return datetime.now(UTC) + self.skew
+
+    wall = Wall()
+    s = _slow_commit_setup(
+        tmp_path, lambda: setattr(wall, "skew", timedelta(hours=2)), executor_kwargs={"clock": wall}
+    )
+    assert_no_output_survives(s, s.executor.execute(s.run, 1), "timeout")
+
+
+def test_stop_signalled_during_a_slow_commit_rolls_the_committed_file_back(tmp_path: Path) -> None:
+    class LateStop:
+        armed = False
+
+        def reason(self) -> str | None:
+            return "operator_abort" if self.armed else None
+
+    stop = LateStop()
+    s = _slow_commit_setup(tmp_path, lambda: setattr(stop, "armed", True), stop=stop)
+    assert_no_output_survives(s, s.executor.execute(s.run, 1), "operator_abort")
+
+
+def test_a_commit_inside_every_limit_is_kept(tmp_path: Path) -> None:
+    s = _slow_commit_setup(tmp_path, lambda: None)
+    outcome = s.executor.execute(s.run, 1)
+    assert outcome.execution.status == "succeeded"
+    assert [p.name for p in s.files()] == ["attempt-01.mp4"]
+
+
+def test_a_failed_cleanup_after_the_commit_retracts_the_artefact_and_halts(
+    tmp_path: Path,
+) -> None:
+    s = Setup(tmp_path, runtime=FakeRuntime(mode="release_error"))
+    outcome = s.executor.execute(s.run, 1)
+    assert outcome.cleanup_ok is False
+    assert_no_output_survives(s, outcome, "generation_error")
+
+
 def test_a_fault_after_the_commit_rolls_the_committed_file_back(tmp_path: Path) -> None:
     class Interrupted(FakeRuntime):
         committed_seen = False

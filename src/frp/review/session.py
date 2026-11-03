@@ -87,6 +87,10 @@ _IDENTITY_FIELDS: Final = frozenset({"key", "judgement", "frame_index", "notes"}
 _QUALITY_FIELDS: Final = frozenset({"key", "status", "scores", "unscorable_reason", "notes"})
 
 
+class GrantExpired(Exception):
+    """The review access grant has expired; no further data may be read or recorded."""
+
+
 class SubmissionRejected(Exception):
     """A submitted judgement was invalid. ``problems`` are fixed descriptions."""
 
@@ -305,7 +309,12 @@ class ReviewController:
     def _banners(self) -> list[str]:
         return [SIMULATED_BANNER if self.catalogue.simulated else PRIVATE_BANNER]
 
+    def require_unexpired(self) -> None:
+        if self.expired():
+            raise GrantExpired("the review access grant has expired")
+
     def session_view(self) -> dict[str, Any]:
+        self.require_unexpired()
         if self.mode == "blinded_quality":
             return self._quality_view()
         items = []
@@ -382,6 +391,7 @@ class ReviewController:
 
     def measurements(self, key: str) -> dict[str, Any] | None:
         """Mode A only: automated detection statuses and uncalibrated similarities, on request."""
+        self.require_unexpired()
         if self.mode != "identity_inspection":
             return None
         item = self.catalogue.item(key)
@@ -422,8 +432,7 @@ class ReviewController:
 
     def media(self, key: str, kind: str, index: int = 0) -> bytes | None:
         """Sanitised PNG bytes for a reference (Mode A only) or an output frame, else ``None``."""
-        if self.expired():
-            return None
+        self.require_unexpired()
         item = self._item_for_key(key)
         if item is None:
             return None
