@@ -279,7 +279,11 @@ class Wan21BaselineExecutor:
         if environment != m.software_environment_hash:
             raise ExecutionRefused("provenance_mismatch")
         try:
-            verified = verify_checkpoint_files(self._checkpoint_dir, grant.expected_files)
+            verified = verify_checkpoint_files(
+                self._checkpoint_dir,
+                grant.expected_files,
+                require_trusted_tree=self._backend.info.live,
+            )
         except PreflightError:
             raise ExecutionRefused("weights_verification_failed") from None
         self._verified = verified

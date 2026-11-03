@@ -48,6 +48,7 @@ class Setup:
             authorisation=self.provider,
             source_inspector=kwargs.pop("inspector", FakeInspector()),
             stop=kwargs.pop("stop", None),
+            **{name: kwargs.pop(name) for name in ("clock", "timer") if name in kwargs},
         )
         assert not kwargs
 

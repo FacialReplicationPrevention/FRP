@@ -43,6 +43,7 @@ from frp.baseline.wan21_runtime import (
     runtime_environment_problems,
     torch_version_problem,
 )
+from frp.private_storage import LocalPrivateStore
 from tests.baseline_support import (
     REFERENCE_SHA,
     FakeInspector,
@@ -53,6 +54,7 @@ from tests.test_baseline_evaluation import FixedQuality, PatternFace
 from tests.wan21_support import (
     GPU,
     NEGATIVE_PROMPT,
+    STORE_NAMESPACE,
     STORE_OUTPUT_BASE,
     UPSTREAM_GENERATE_KEYWORDS,
     FakeImage,
@@ -81,6 +83,9 @@ class Setup:
         manifest_overrides: dict[str, Any] | None = None,
         adapter_manifest_overrides: dict[str, Any] | None = None,
         extra_files: dict[str, bytes] | None = None,
+        adapter_class: Any = Wan21UpstreamAdapter,
+        executor_kwargs: dict[str, Any] | None = None,
+        reuse_store: Setup | None = None,
     ) -> None:
         self.root = tmp_path / "ckpt"
         self.root.mkdir()
@@ -92,12 +97,16 @@ class Setup:
         if adapter_manifest_overrides:
             bound = adapter_manifest(self.expected, **adapter_manifest_overrides)
         self.plan = generate_baseline_plan(self.manifest)
-        self.store = tmp_path / "private-store"
-        self.private = make_private_store(
-            self.store, {run.identity_pseudonym for run in self.plan.runs}
-        )
+        if reuse_store is not None:  # a "restart": new processes over the same private store
+            self.store = reuse_store.store
+            self.private = LocalPrivateStore(self.store, STORE_NAMESPACE)
+        else:
+            self.store = tmp_path / "private-store"
+            self.private = make_private_store(
+                self.store, {run.identity_pseudonym for run in self.plan.runs}
+            )
         self.runtime = runtime if runtime is not None else FakeRuntime()
-        self.adapter = Wan21UpstreamAdapter(
+        self.adapter = adapter_class(
             manifest=bound,
             runtime=self.runtime,
             artefacts=self.private,
@@ -115,6 +124,7 @@ class Setup:
             authorisation=self.provider,
             source_inspector=inspector or FakeInspector(),
             stop=stop,
+            **(executor_kwargs or {}),
         )
 
     @property
