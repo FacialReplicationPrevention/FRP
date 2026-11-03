@@ -1,7 +1,7 @@
 # GPU procurement evidence and private go/no-go dossier — Wan 2.1 I2V-14B-480P (Milestone 004, PR 3D)
 
 **Status: PLANNING ONLY. NOT AUTHORISED. Nothing here has been rented, bought, downloaded, hashed, loaded, run or approved.**
-No GPU, no checkpoint, no real-person media, no biometric evaluation, no cloud media upload. All seven human gates in the
+No GPU, no checkpoint, no real-person media, no biometric evaluation, no media transfer to any provider. All seven human gates in the
 [GPU readiness protocol](gpu-readiness.md) stay **pending**; `readiness/wan21-i2v-baseline.yaml` and
 `provenance/model-candidates.yaml` are unchanged (`not_ready`). A rate card is not a quote, a merged PR is not an approval,
 and a passing test is not evidence about a GPU.
@@ -90,7 +90,7 @@ All rates are USD on-demand list prices from **search-tool snippets of 2026-11-0
 - *VRAM:* the three 80 GB rows leave ≈ 4 % headroom against the 720P upstream figure; 94–141 GB rows reduce out-of-memory risk at a higher hourly rate. Sufficiency is **UNVERIFIED** for every option.
 - *Host RAM:* with `offload_model`, weights move between GPU and host memory and loading reads ≈ 82 GB of files. A 94 GB host (P2-NVL) may be tight; 225–256 GiB hosts are not. The real requirement is **UNVERIFIED** (the load path has never been run).
 - *Isolation:* only P3 offers well-established guest-network control, but it is the most expensive and has the most quota friction; P1 and P2 egress controls (firewall/"block all after download") were **not established** from the retrieved text and are vendor questions.
-- *Stop mechanics:* the three vendors need **different** hard-stop designs (§3.3). Do not assume a single supervisor works on all.
+- *Stop mechanics:* the three vendors need **different** hard-stop designs (§3.2). Do not assume a single supervisor works on all.
 - Wan 2.1 weights come from Hugging Face; whether egress to it is possible from each provider and how it can be closed again afterward is part of the vendor question list below.
 
 ### 2.3 Exact questions to put to a vendor (to obtain a **dated quotation**)
@@ -138,14 +138,16 @@ The 2/4/8 h windows are **illustrative bounds for arithmetic**, not predictions:
 
 ### 3.1 Cap options for the budget approver (none is chosen here)
 
-A cap is a **human decision under gate 5** and must be (a) accepted in writing before spend, (b) enforced **outside Python** (§3.3), and (c) at least the worst case under the enforced hard stop, otherwise it is not a cap.
+A cap is a **human decision under gate 5** and must be (a) accepted in writing before spend, (b) enforced **outside Python** (§3.2), and (c) at least the worst case under the enforced hard stop, otherwise it is not a cap.
+
+**C1 and C2 are budgeting scenarios, not guaranteed spend caps,** until (i) an independently tested termination service (off-instance, not Python) is documented and (ii) a conservative bound on **all** post-stop, storage, snapshot and billing-delay liability is written down. A time-box does not bound spend if termination fails. **C3 and C4 are payment-side mitigations, not contractual maximums.** A vendor-verified cap mechanism is required for gate 5; absent one, the outcome is NO-GO (§8), and the off-instance wall-clock kill is retained in every option.
 
 | Option | Structure | What the approver must decide | Trade-off |
 | --- | --- | --- | --- |
 | **C1** | One bounded window of *H* hours covering download, hashing, load and one attempt | *H* and the contingency percentage; cap = quoted rate × *H* × (1 + contingency) + storage + fees + tax | Simplest; one approval of spend, but gate 6 and gate 7 still need **separate** approvals within it |
 | **C2** | Two windows, each with its own cap: stage A = environment, download and hashing (gate 6; no personal data on the host), stage B = the single smoke attempt (gate 7) | *H_A*, *H_B*, whether the instance is terminated between them | Separates risk and approvals; if the instance is terminated, the ephemeral weights are lost and must be re-downloaded (spend ×2 for the download), unless a persistent **local** volume is attested |
-| **C3** | Prepaid ceiling: fund the account with no more than the cap (where the vendor is prepaid, e.g. Runpod) | The funded amount; confirm auto-pay is off and the 5-minute billing lag is inside the contingency | A provider-enforced ceiling that does not depend on any FRP process; behaviour at $0 is destructive (data deletion), which is acceptable for an ephemeral run |
-| **C4** | Independent financial limit (e.g. a funding source limited to the cap) combined with C1/C2 | Who holds the funding limit and what happens on a declined charge | Provider-agnostic backstop; not a substitute for an instance kill and may leave unpaid usage or a suspension |
+| **C3** | Prepaid ceiling: fund the account with no more than the cap (where the vendor is prepaid, e.g. Runpod) | The funded amount; **confirm in writing with the vendor**: auto-pay/auto-top-up off, other account charges (storage, other pods) that draw on the same balance, billing delay (Runpod's own guidance describes 5-minute billing cycles and different stopped vs terminated pod behaviour), and the exact low-balance termination semantics | Provider-side ceiling that does not depend on any FRP process **if** those answers hold; not inferred from snippet pricing; behaviour at $0 is destructive (data deletion), acceptable only for an ephemeral run |
+| **C4** | Independent financial limit (e.g. a funding source limited to the cap) combined with C1/C2 | Who holds the funding limit and what happens on a declined charge | Provider-agnostic backstop; **cannot guarantee a maximum contractual charge** — unpaid usage, a suspension or a later invoice remain possible; not a substitute for an instance kill |
 
 Illustrative cap sizes for C1 are the §3 grid (e.g. 4 h at the quoted rate) **plus** contingency; **no number is proposed as "the" cap**.
 
@@ -195,7 +197,7 @@ No provider-terms clause was read or interpreted in preparing this dossier, so *
 | R10 | **Pinned `.pth` weights-only compatibility** (runbook §5) | Requires torch ≥ 2.6, refuses the override variable and extra pickle files; fail-closed if a load fails | Whether the T5, VAE and CLIP `.pth` files load under weights-only unpickling is **unverified**; there is **no unsafe fallback** | Technical reviewer | Observed only in the gated run; a refusal there is a gate-7 **finding**, not a reason to relax the loader |
 | R11 | **`cache_video`/ffmpeg staged-file inode behaviour** (runbook §8) | Deferred commit refuses (fail-closed) if the encoder replaces the staged partial's inode | Real encoder behaviour is **unverified**; a change to the adapter would need a separate reviewed PR | Technical reviewer | Observed only in the gated run (T8 in §6.2) |
 | R12 | Same-uid/root TOCTOU (design §8.5) | Documented residual | Single-tenant, ephemeral, credential-free host | Private-runtime owner | Accepted-risk entry in the private record |
-| R13 | Reference transfer and output retrieval across an egress-blocked host | None | **Open design question:** how references enter and outputs leave a host whose outbound traffic is blocked (e.g. an operator-initiated transfer on an allow-listed management channel) without a cloud media upload to any third party | Private-runtime owner + data-protection owner | Written transfer design reviewed under gates 3 and 4 |
+| R13 | Reference transfer and output retrieval across an egress-blocked host | None | **Open design question:** how references enter and outputs leave a host whose outbound traffic is blocked (e.g. an operator-initiated transfer on an allow-listed management channel) **Data boundary:** a real portrait moved to a rented GPU is a transfer to, and third-party hosting/processing by, the **selected GPU provider**, even if the guest filesystem is local and outbound traffic is blocked. The design must therefore distinguish (a) *no additional* third-party media or inference service (required) from (b) the transfer to the selected provider (a gate 2/3/4 decision covering ingress/egress path, provider and support access, logging, snapshots and deletion). Preferred for the first technical smoke: R2, which avoids (b) for a real person (§6.1) | Private-runtime owner + data-protection owner | Written transfer design reviewed under gates 2, 3 and 4 |
 
 ### 5.2 Fail-closed inspection and stop checklist for a later, separately authorised run
 
@@ -205,13 +207,13 @@ This is an **evidence checklist, not a command**. Each line is a human-attested 
 
 *After provisioning, before weights or data:* (5) instance type/region/GPU equal the quote; (6) local-volume attestation recorded for store and checkpoint volumes; (7) driver/CUDA/image/ffmpeg identities recorded; (8) fresh clone at `9737cba…`, clean; (9) environment installed from the frozen specification, torch ≥ 2.6; (10) offline variables set, `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD`, `LD_PRELOAD`, `LD_AUDIT`, `IMAGEIO_FFMPEG_EXE` absent; (11) hard-kill supervisor and external watchdog running; (12) egress policy staged for the post-download state.
 
-*Gate 6 stage (separate approval; no personal data on the host):* (13) download only the pinned revision; (14) file list equals the Hub list at that revision, nothing extra; (15) local SHA-256 of **every** file recorded privately and compared with Hub-reported values; any mismatch = STOP; (16) egress closed and **demonstrated** closed before any reference arrives.
+*Gate 6 stage (separate approval; no personal data on the host):* (13) download only the pinned revision; (14) file list equals the Hub list at that revision, nothing extra; (15) local SHA-256 of **every** file recorded privately. Verification is source-specific: for LFS-tracked files the Hub publishes a SHA-256 object id to compare against; for ordinary Git-tracked files the Hub exposes only a Git blob SHA-1, so a SHA-256 comparison is not available from the Hub and the reviewed private expected-digest manifest must be established independently (e.g. a second, separately reviewed download or a recorded trust decision). Missing, extra or mismatching files = STOP; no check may require metadata the Hub does not publish; (16) egress closed and **demonstrated** closed before any reference arrives.
 
 *Gate 7 stage:* (17) grant is the approved one, unexpired, un-revoked, single run, attempt cap 1; (18) reference bytes hash equals the grant; (19) no remote service, no prompt extension, no LoRA/adapter loaded; (20) resource monitors running outside the Python process.
 
 *Stop immediately, then terminate, then verify deletion, then record:* a cost/quota event not in the plan; elapsed time at the deadline; unexplained egress attempt; evidence of a non-consenting or underage person; a withdrawal; a hash or provenance mismatch; unexpected files or processes; any sign of a leak; a request to relax a refusal to "make it work".
 
-*Close-out:* (21) outputs only in approved private storage; (22) every instance/volume/snapshot/image/log deleted and listed; (23) actual charges recorded against the cap; (24) every attempt (including refusals and kills) accounted for; (25) ledger/token retention applied as decided under R2.
+*Close-out:* (21) outputs only in approved private storage; (22) every instance/volume/snapshot/image/log deleted and listed; (23) console charges recorded against the cap now, and the final invoice/statement reconciled when it arrives (separate close-out item, §6.2); (24) every attempt (including refusals and kills) accounted for; (25) ledger/token retention applied as decided under R2.
 
 ## 6. Proposed minimal technical smoke-test specification (`smoke-spec-0.1-proposed`) — NOT AUTHORISED, NOT EXECUTED
 
@@ -226,7 +228,7 @@ Everything below is **PROPOSED** for human freeze under gate 7 and Experiment 00
 | Source / checkpoint | pins above; `use_prompt_extend: false`; original reference to both routes; no adapter/remote service | AGENTS.md; runbook | **Decided** |
 | Prompt | `prompt_template_version` = `smoke-neutral-v0.1`; text: "A person in a softly lit room looks toward the camera with a neutral expression, then slowly turns their head slightly to one side and back." Neutral motion only; negative prompt = upstream config default | The synthetic example prompt is illustrative; this text is a new proposal | PENDING |
 | Seed | one arbitrary non-negative integer in [0, 2³²−1], drawn once and recorded before any run (candidate `2026110301`); never chosen after viewing outputs | Adapter refuses negative seeds | PENDING |
-| Frame count | **81** (= 4·20+1) | Upstream default, `generate.py` L84–L85 at the pinned commit | PENDING |
+| Frame count | **81** (= 4·20+1) | Upstream default, `generate.py` L84–L85 at the pinned commit | PENDING. This spec is an **upstream-default full-path smoke** (81 frames × 40 steps), not the "smallest possible" run. A shorter independent plumbing check (fewer frames/steps) could cost less, but any such deviation must be frozen **before** execution, would exercise a different path, and cannot substitute for the unchanged Experiment 003 baseline |
 | Resolution label | `480*832` (portrait reference); expected output geometry computed offline with the existing CPU helper `expected_geometry`: a 832-high × 480-wide reference gives 832×480 with no refusal (a 480-high × 832-wide landscape reference would give **464×832** because of upstream float arithmetic) | `frp.baseline.wan21_adapter`, runbook §3 | PENDING |
 | Sampler / steps / shift / CFG | `unipc` / **40** / **3.0** / **5.0** | Upstream I2V-480P defaults, `generate.py` L70–L81 and L242–L246 at the pinned commit | PENDING |
 | Precision | `upstream-i2v-14B-config` (the only label the adapter accepts) | Runbook §3 | PENDING (open review item 1 in runbook §10) |
@@ -237,7 +239,7 @@ Everything below is **PROPOSED** for human freeze under gate 7 and Experiment 00
 
 **Offline check of the proposed values (2026-11-03, CPU only).** A temporary copy of `examples/manifests/synthetic-baseline-dry-run.yaml` (not committed) with `run_role: smoke`, one synthetic identity with `identity_split: null` (the implemented smoke rule; Experiment 003 §3 only says "no split"), one prompt, one seed and the control values above (`resolution: "480*832"`, `frame_indices: [0, 20, 40, 60, 80]`, the rest as tabulated) was accepted by the strict loader: `frp baseline-plan` exit 0, role `smoke`, 1 planned run, claims `technical_smoke_only`, **NOT EXECUTION READY** (hashes, environment digest, GPU model unset; no authorisation mechanism; live backend disabled). This shows only that the proposal is *syntactically* consistent with the manifest contract; it does not exercise the adapter's runtime refusals and says nothing about a GPU.
 
-**Reference class (human decision R).** *R1* — one consenting verified adult (Experiment 003 §2 default; requires gate 2 and the private transfer in R13). *R2* — **PROPOSED for consideration:** a licence-verified synthetic portrait that does not depict a real person, because a technical smoke test needs no real identity and this removes real-person biometric transfer from the first spend; it **deviates from Experiment 003's "consented adult"** wording, needs an explicit recorded decision (including whether gate 2 may record "no real person" — an agent cannot decide this), and synthetic faces can resemble real people and carry their own licences. *R3* — a non-face technical image: exercises the pipeline and probes but not face-detection sanity. **This dossier selects none.**
+**Reference class (human decision R).** *R1* — one consenting verified adult (Experiment 003 §2 default; requires gate 2 and an approved transfer to the selected GPU provider under R13 — a transfer to third-party hosting/processing, not a "local" operation); **reserve R1 for the later consented scientific baseline.** *R2* — **PROPOSED as the preferred reference for the first technical pipeline smoke, subject to a recorded human protocol decision:** a licence-verified synthetic portrait that does not depict a real person, because a technical smoke test needs no real identity and this removes real-person biometric transfer from the first spend; it **deviates from Experiment 003's "consented adult"** wording, needs an explicit recorded decision (including whether gate 2 may record "no real person" — an agent cannot decide this), and synthetic faces can resemble real people and carry their own licences. *R3* — a non-face technical image: exercises the pipeline and probes but not face-detection sanity. **This dossier selects none.**
 
 ### 6.2 Technical success and failure criteria (the run is a **failure** unless every T-item holds)
 
@@ -250,13 +252,15 @@ Everything below is **PROPOSED** for human freeze under gate 7 and Experiment 00
 | T5 | Original reference reached CLIP and VAE routes and both CFG branches; denoiser pairs = `sampling_steps` (40) | Probe metadata (shapes, dtypes, devices only) |
 | T6 | Output tensor/geometry `(3, 81, h, w)` equals the expected geometry | Executor output check |
 | T7 | Artefact exists **only** in approved private storage under a private reference; nothing in the public repo, CI, issue or log | Close-out list |
-| T8 | Deferred commit succeeded under the real encoder (inode preserved) *or* the refusal is recorded as a finding | Attempt record |
-| T9 | Loader outcome recorded: whether `.pth` files loaded weights-only on the pinned torch (R10) | Attempt record |
-| T10 | Measured resource and cost: wall time per stage, GPU-seconds (wall-clock of `generate`), peak VRAM and host RAM **as sampled**, and the provider's **actual charge** against the cap | Private log + invoice |
+| T8 | **Verified real encode and commit:** deferred commit succeeded under the real encoder (inode preserved) and the committed artefact exists. A refusal (e.g. inode change) is an informative **FAIL (F-COMMIT)**, never a PASS | Attempt record |
+| T9 | **Verified real load:** every `.pth` file loaded weights-only on the pinned torch (R10) and generation proceeded. A refused or failed load is an informative **FAIL (F-LOADER)**, never a PASS; no unsafe fallback is permitted | Attempt record |
+| T10 | Measured resource: wall time per stage, GPU-seconds (wall-clock of `generate`), peak VRAM and host RAM **as sampled**, and the provider-console **running charge** against the cap | Private log + console |
 | T11 | **Full attempt accounting:** every attempt, refusal, abort and kill recorded; a missing, truncated or failed output is a **FAIL**, never discarded or re-run silently | Attempt ledger, billing lines |
 | T12 | Every stop condition in §5.2 either did not occur or was handled as specified | Operator record |
 
-Outcomes: **PASS-technical** (T1–T12 all hold), **FAIL** (any T-item fails or output missing), **INCONCLUSIVE** (monitoring or evidence gap). A failed or inconclusive run is reported with its cost; it neither proves nor refutes anything about Wan's identity behaviour.
+Outcomes: **PASS-technical** requires T1–T12 all verified, which includes a verified real load **and** a generated, correctly committed output. **FAIL** — any T-item fails or the output is missing; failures are classified separately and are informative results, e.g. F-LOADER (T9), F-COMMIT (T8), F-LIMIT (stop condition/cap/deadline hit), F-INTEGRITY (T1–T4 mismatch), F-OUTPUT (T6/T7 or no output), F-ACCOUNTING (T11). **INCONCLUSIVE** — only when the run itself completed and *every* functional T-item was verified except an evidence gap that could not be known in-run (e.g. a monitor dropped out); any T-item that is *required* (T1–T9, T11) and unverified is a FAIL, consistent with §8.11 ("missing evidence = FAIL"); INCONCLUSIVE applies only to T10/T12 gaps and cannot be reported as PASS. A failed or inconclusive run is reported with its cost; it neither proves nor refutes anything about Wan's identity behaviour.
+
+**Close-out criterion (separate, after the run):** the *final* billed charges may arrive after the run ends (weekly/monthly invoices, billing lag). Final cost reconciliation — invoice or provider statement against the cap, confirmed deletion of all billable resources — is therefore a distinct close-out item recorded when available; the run is not reported "closed" before it, and the lack of an invoice at execution completion is not itself a technical FAIL.
 
 ### 6.3 What a technical smoke test cannot prove
 
@@ -285,16 +289,16 @@ A gate is decided only by a named human in a private record. The table gives wha
 Any of these means **NO-GO** until a human re-reviews and records the change:
 
 1. Any of gates 1–7 not decided in a private record, or any earlier gate later contradicted.
-2. No dated vendor quotation, no confirmed quota, or no user-approved hard cap; a cap that depends on Python or on an alert with reporting delay.
+2. No dated vendor quotation, no confirmed quota, or no user-approved hard cap; a cap that depends on Python, on an alert with reporting delay, or on a time-box/payment workaround (C1–C4) without a vendor-verified mechanism and a written bound on post-stop/storage/billing liability.
 3. No tested emergency termination and no external watchdog; on Lambda, reliance on an on-instance shutdown; on AWS, reliance on Budgets alone.
 4. No attested **local** store/checkpoint volume (NFS/SMB/FUSE/synced folders, Lambda persistent filesystems, Runpod network volumes, or an undecided block-volume definition).
-5. Egress not demonstrably blocked after the download; no reviewed channel for reference/output transfer (R13).
+5. Egress not demonstrably blocked after the download; no reviewed channel for reference/output transfer (R13); a real-person reference to a GPU provider without explicit gate 2/3/4 decisions on that transfer and provider access/deletion (a "local" guest filesystem is not a data boundary).
 6. Provider terms/DPA unread or not permitting the workload; Runpod Community Cloud or any multi-tenant third-party host for identifiable data.
 7. Any real-person reference without gate 2 consent and withdrawal procedure; any minor, third party, or sexual/deceptive prompt.
 8. Pin change, licence/terms/price change, hash mismatch, unexpected files, or an unclean or unpinned checkout.
 9. Environment not frozen, torch < 2.6, a requested relaxation of a refusal (`t5_cpu`, precision, loader), or a request to enable prompt extension, LoRA or any remote service.
 10. Granting provider, activation flag, test grant or private path present in the public repository.
-11. Evidence gaps: a missing T-item in §6.2 is a FAIL, not a reason to rerun unplanned.
+11. Evidence gaps: a missing required T-item (T1–T9, T11) in §6.2 is a FAIL, not a reason to rerun unplanned.
 
 ## 9. Decisions only humans can make (exact list)
 
