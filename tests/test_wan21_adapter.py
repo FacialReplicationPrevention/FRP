@@ -44,23 +44,24 @@ from frp.baseline.wan21_runtime import (
     torch_version_problem,
 )
 from tests.baseline_support import (
-    ARTEFACT_BASE,
+    REFERENCE_SHA,
     FakeInspector,
     FakeStop,
-    FixedReferences,
     RecordingProvider,
 )
 from tests.test_baseline_evaluation import FixedQuality, PatternFace
 from tests.wan21_support import (
     GPU,
     NEGATIVE_PROMPT,
+    STORE_OUTPUT_BASE,
     UPSTREAM_GENERATE_KEYWORDS,
     FakeImage,
     FakeRuntime,
     FakeTextEncoder,
     FakeWanI2V,
-    StoreLocator,
+    StoreReferences,
     adapter_manifest,
+    make_private_store,
     make_wan_checkpoint,
 )
 
@@ -92,21 +93,25 @@ class Setup:
             bound = adapter_manifest(self.expected, **adapter_manifest_overrides)
         self.plan = generate_baseline_plan(self.manifest)
         self.store = tmp_path / "private-store"
+        self.private = make_private_store(
+            self.store, {run.identity_pseudonym for run in self.plan.runs}
+        )
         self.runtime = runtime if runtime is not None else FakeRuntime()
         self.adapter = Wan21UpstreamAdapter(
             manifest=bound,
             runtime=self.runtime,
-            artefacts=StoreLocator(self.store),
+            artefacts=self.private,
+            references=self.private,
             **({"timer": timer} if timer is not None else {}),
         )
         self.provider = RecordingProvider() if provider is _DEFAULT else provider
         self.executor = Wan21BaselineExecutor(
             manifest=self.manifest,
             backend=self.adapter,
-            references=FixedReferences(),
+            references=StoreReferences(),
             checkpoint_dir=self.root,
             source_dir=tmp_path / "src",
-            artefact_base_uri=ARTEFACT_BASE,
+            artefact_base_uri=STORE_OUTPUT_BASE,
             authorisation=self.provider,
             source_inspector=inspector or FakeInspector(),
             stop=stop,
@@ -122,11 +127,15 @@ class Setup:
         return pipeline
 
     def files(self) -> list[Path]:
-        return (
-            sorted(p for p in self.store.rglob("*") if not p.is_dir())
-            if self.store.exists()
-            else []
-        )
+        outputs = self.store / "outputs"  # the ledger and references are not outputs
+        return sorted(p for p in outputs.rglob("*") if not p.is_dir()) if outputs.exists() else []
+
+    def run_dir(self) -> Path:
+        """The (owner-only) output directory of the first run, as a store would create it."""
+        for part in (self.store / "outputs", self.store / "outputs" / self.run.run_id):
+            part.mkdir(mode=0o700, exist_ok=True)
+            part.chmod(0o700)
+        return self.store / "outputs" / self.run.run_id
 
     def refusal(self) -> str:
         with pytest.raises(ExecutionRefused) as excinfo:
@@ -136,7 +145,7 @@ class Setup:
     def assert_nothing_loaded_or_generated(self) -> None:
         assert "build" not in self.runtime.events  # no model load (and so no download)
         assert self.runtime.pipelines == []  # no generate call can have happened
-        assert "open_reference" not in self.runtime.events  # the reference was never opened
+        assert "decode_reference" not in self.runtime.events  # the reference was never opened
         assert self.files() == []
 
     def assert_failed_without_artefact(self, outcome: Any, detail: str) -> None:
@@ -164,11 +173,11 @@ def test_fake_upstream_success_is_simulated_and_writes_one_private_artefact(tmp_
     assert s.adapter.info.live is False
     assert s.executor.info.simulated is True  # a fake upstream is NOT a Wan 2.1 inference
     assert s.provider.requests[0].executor_mode == "mock"
-    final = s.store / s.run.run_id / "attempt-01.mp4"
+    final = s.store / "outputs" / s.run.run_id / "attempt-01.mp4"
     assert s.files() == [final]
     assert final.stat().st_mode & 0o777 == 0o600
     assert outcome.execution.artefact is not None
-    assert outcome.execution.artefact.uri == f"{ARTEFACT_BASE}/{s.run.run_id}/attempt-01.mp4"
+    assert outcome.execution.artefact.uri == f"{STORE_OUTPUT_BASE}/{s.run.run_id}/attempt-01.mp4"
     assert outcome.execution.gpu_seconds is not None
     assert s.runtime.saved_fps == [16]  # cfg.sample_fps, as upstream generate.py writes it
     assert s.runtime.events.index("check_available") < s.runtime.events.index("build")
@@ -211,7 +220,7 @@ def _request_for(s: Setup) -> GenerationRequest:
     return GenerationRequest(
         run_id=s.run.run_id,
         attempt_index=1,
-        reference=FixedReferences().reference_for(s.run.identity_pseudonym),
+        reference=StoreReferences().reference_for(s.run.identity_pseudonym),
         prompt_text=s.manifest.prompts[0].text,
         seed=s.run.seed,
         max_area=480 * 832,
@@ -221,8 +230,9 @@ def _request_for(s: Setup) -> GenerationRequest:
         sampling_steps=2,
         guide_scale=5.0,
         offload_model=False,
-        output_uri=f"{ARTEFACT_BASE}/{s.run.run_id}/attempt-09.mp4",
+        output_uri=f"{STORE_OUTPUT_BASE}/{s.run.run_id}/attempt-09.mp4",
         deadline_seconds=60.0,
+        reference_sha256=REFERENCE_SHA,
     )
 
 
@@ -527,36 +537,32 @@ def test_output_shape_violations_are_never_written(tmp_path: Path, mode: str) ->
 
 def test_existing_artefact_is_never_overwritten(tmp_path: Path) -> None:
     s = Setup(tmp_path)
-    final = s.store / s.run.run_id / "attempt-01.mp4"
-    final.parent.mkdir(parents=True)
+    final = s.run_dir() / "attempt-01.mp4"
     final.write_bytes(b"earlier synthetic attempt")
-    outcome = s.executor.execute(s.run, 1)
-    assert outcome.failure_detail == "generation_error"
-    assert outcome.execution.artefact is None
+    final.chmod(0o600)
+    assert s.refusal() == "invalid_input"  # refused before the model is loaded
     assert final.read_bytes() == b"earlier synthetic attempt"
-    assert s.pipeline.generate_calls == []
+    assert "build" not in s.runtime.events
 
 
 def test_stale_partial_file_blocks_the_attempt_and_is_kept(tmp_path: Path) -> None:
     s = Setup(tmp_path)
-    stale = s.store / s.run.run_id / ".attempt-01.partial.mp4"
-    stale.parent.mkdir(parents=True)
+    stale = s.run_dir() / ".attempt-01.partial.mp4"
     stale.write_bytes(b"left by a killed synthetic run")
-    outcome = s.executor.execute(s.run, 1)
-    assert outcome.failure_detail == "generation_error"
-    assert s.files() == [stale]  # the reservation was removed; the stale file is untouched
+    stale.chmod(0o600)
+    assert s.refusal() == "invalid_input"
+    assert s.files() == [stale]  # the stale file is untouched
     assert stale.read_bytes() == b"left by a killed synthetic run"
+    assert "build" not in s.runtime.events
 
 
 def test_symlinked_artefact_location_is_refused(tmp_path: Path) -> None:
     s = Setup(tmp_path)
     target = tmp_path / "elsewhere.mp4"
-    final = s.store / s.run.run_id / "attempt-01.mp4"
-    final.parent.mkdir(parents=True)
-    final.symlink_to(target)
-    outcome = s.executor.execute(s.run, 1)
-    assert outcome.failure_detail == "generation_error"
+    (s.run_dir() / "attempt-01.mp4").symlink_to(target)
+    assert s.refusal() == "invalid_input"
     assert not target.exists()
+    assert "build" not in s.runtime.events
 
 
 def test_unreadable_reference_fails_without_leaking_its_location(
@@ -700,7 +706,7 @@ def test_stop_before_generation_never_opens_the_reference(tmp_path: Path) -> Non
     s = Setup(tmp_path, stop=FakeStop("operator_abort"))  # type: ignore[arg-type]
     outcome = s.executor.execute(s.run, 1)
     s.assert_failed_without_artefact(outcome, "operator_abort")
-    assert "open_reference" not in s.runtime.events
+    assert "decode_reference" not in s.runtime.events
 
 
 def test_deadline_is_enforced_inside_the_denoising_loop(tmp_path: Path) -> None:
@@ -764,12 +770,14 @@ def test_only_the_real_runtime_class_is_labelled_live(tmp_path: Path) -> None:
     real = Wan21UpstreamAdapter(
         manifest=s.manifest,
         runtime=TorchWanRuntime(source_dir=tmp_path),
-        artefacts=StoreLocator(s.store),
+        artefacts=s.private,
+        references=s.private,
     )
     imitation = Wan21UpstreamAdapter(
         manifest=s.manifest,
         runtime=Imitation(source_dir=tmp_path),
-        artefacts=StoreLocator(s.store),
+        artefacts=s.private,
+        references=s.private,
     )
     assert real.info.live is True
     assert imitation.info.live is False
@@ -784,15 +792,16 @@ def test_real_runtime_is_refused_by_default_and_imports_nothing(tmp_path: Path) 
     adapter = Wan21UpstreamAdapter(
         manifest=s.manifest,
         runtime=TorchWanRuntime(source_dir=tmp_path / "src"),
-        artefacts=StoreLocator(s.store),
+        artefacts=s.private,
+        references=s.private,
     )
     executor = Wan21BaselineExecutor(
         manifest=s.manifest,
         backend=adapter,
-        references=FixedReferences(),
+        references=StoreReferences(),
         checkpoint_dir=s.root,
         source_dir=tmp_path / "src",
-        artefact_base_uri=ARTEFACT_BASE,
+        artefact_base_uri=STORE_OUTPUT_BASE,
         source_inspector=FakeInspector(),
     )
     assert executor.info.simulated is False
@@ -812,15 +821,16 @@ def test_real_runtime_without_dependencies_or_offline_settings_is_unavailable(
     adapter = Wan21UpstreamAdapter(
         manifest=s.manifest,
         runtime=TorchWanRuntime(source_dir=tmp_path / "src"),
-        artefacts=StoreLocator(s.store),
+        artefacts=s.private,
+        references=s.private,
     )
     executor = Wan21BaselineExecutor(
         manifest=s.manifest,
         backend=adapter,
-        references=FixedReferences(),
+        references=StoreReferences(),
         checkpoint_dir=s.root,
         source_dir=tmp_path / "src",
-        artefact_base_uri=ARTEFACT_BASE,
+        artefact_base_uri=STORE_OUTPUT_BASE,
         authorisation=RecordingProvider(),  # test-only grant; the runtime still refuses
         source_inspector=FakeInspector(),
     )
@@ -951,10 +961,10 @@ def _executor_for(s: Setup, backend: Any, source_dir: Path) -> Wan21BaselineExec
     return Wan21BaselineExecutor(
         manifest=s.manifest,
         backend=backend,
-        references=FixedReferences(),
+        references=StoreReferences(),
         checkpoint_dir=s.root,
         source_dir=source_dir,
-        artefact_base_uri=ARTEFACT_BASE,
+        artefact_base_uri=STORE_OUTPUT_BASE,
         authorisation=RecordingProvider(),
         source_inspector=FakeInspector(),
     )

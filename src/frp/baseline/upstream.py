@@ -42,8 +42,17 @@ class UpstreamWan21Backend:
     def load(self, checkpoint: VerifiedCheckpoint) -> None:
         raise LiveExecutionDisabled("the live Wan 2.1 backend is disabled in this release")
 
+    def check_attempt(self, request: GenerationRequest) -> None:
+        raise LiveExecutionDisabled("the live Wan 2.1 backend is disabled in this release")
+
     def generate(self, request: GenerationRequest, stop: StopSignal) -> GenerationOutput:
         raise LiveExecutionDisabled("the live Wan 2.1 backend is disabled in this release")
+
+    def commit_output(self, request: GenerationRequest) -> None:
+        raise LiveExecutionDisabled("the live Wan 2.1 backend is disabled in this release")
+
+    def discard_output(self, request: GenerationRequest) -> None:
+        return None
 
     def cleanup(self) -> None:
         return None

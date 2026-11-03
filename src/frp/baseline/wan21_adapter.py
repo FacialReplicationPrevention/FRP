@@ -19,8 +19,15 @@ adapter adds only what needs the upstream call:
   an unsupported manifest is refused before anything is loaded.
 * **Conditioning instrumentation** (:mod:`frp.baseline.wan21_probe`): the same original image on
   the CLIP and VAE first-frame routes and in both CFG branches, recorded as metadata only.
-* **Geometry, output and lifecycle**: exact expected output size, write-once private artefact,
-  typed failures without messages, cleanup of partial files and GPU memory.
+* **Geometry, output and lifecycle**: exact expected output size, typed failures without
+  messages, cleanup of staged files and GPU memory. ``generate`` only **stages** the video in an
+  exclusive owner-only partial file of a :class:`~frp.private_storage.OutputStore`; the executor
+  publishes it with :meth:`Wan21UpstreamAdapter.commit_output` only after every post-generation
+  check, and :meth:`~Wan21UpstreamAdapter.discard_output` rolls a committed file back (inode
+  checked) if anything later fails, so a rejected result never leaves a final or partial file.
+* **Approved reference bytes**: :meth:`Wan21UpstreamAdapter.check_attempt` hashes the bounded,
+  no-follow reference read against the grant's SHA-256 *before* the model is loaded; ``generate``
+  re-reads and re-hashes before decoding (a mismatch there is a failure with no output).
 
 A success through a fake runtime is **not** a Wan 2.1 inference: ``info.live`` is true only for the
 real :class:`~frp.baseline.wan21_runtime.TorchWanRuntime`, so results over any other runtime are
@@ -30,14 +37,14 @@ labelled ``simulated``.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import math
-import os
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final, Protocol
+from typing import Any, Final
 
 from frp.baseline.backend import (
     BackendError,
@@ -72,6 +79,7 @@ from frp.baseline.protocol import (
 from frp.baseline.wan21_probe import ConditioningProbe
 from frp.baseline.wan21_runtime import TorchWanRuntime, UpstreamConfigFacts, UpstreamRuntime
 from frp.manifest import SEED_MAX, SEED_MIN
+from frp.private_storage import OutputStore, ReferenceReader, Reservation, StorageError
 
 ADAPTER_NAME: Final = "wan21-upstream-adapter"
 
@@ -155,12 +163,6 @@ class OutputRejected(BackendError):
 
 class UpstreamGenerationFailed(BackendError):
     """Upstream generation raised. The original exception text is never kept or recorded."""
-
-
-class ArtefactLocator(Protocol):
-    """Private mapping from an opaque ``private://`` artefact URI to a local file path."""
-
-    def local_path(self, artefact_uri: str) -> Path: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,16 +352,19 @@ class Wan21UpstreamAdapter:
         *,
         manifest: BaselineManifest,
         runtime: UpstreamRuntime,
-        artefacts: ArtefactLocator,
+        artefacts: OutputStore,
+        references: ReferenceReader,
         timer: Callable[[], float] = time.monotonic,
     ) -> None:
         self._manifest = manifest
         self._runtime = runtime
         self._artefacts = artefacts
+        self._references = references
         self._timer = timer
         self._pipeline: Any = None
         self._facts: UpstreamConfigFacts | None = None
-        self._pending: list[Path] = []
+        self._staged: dict[str, Reservation] = {}
+        self._committed: dict[str, Reservation] = {}
 
     @property
     def info(self) -> BackendInfo:
@@ -416,6 +421,28 @@ class Wan21UpstreamAdapter:
 
     # -- generate -----------------------------------------------------------------------------
 
+    def check_attempt(self, request: GenerationRequest) -> None:
+        """Before any model load: the store is sound, the output is reservable, the reference is
+        exactly the approved bytes. Bounded and hash-only: nothing is decoded or written."""
+        if problems := configuration_problems(self._manifest):
+            raise UnsupportedConfiguration(problems)
+        try:
+            if self._artefacts.problems() or self._references.problems():
+                raise OutputRejected
+            self._artefacts.check_reservable(request.output_uri)
+        except StorageError:
+            raise OutputRejected from None
+        self._read_approved_reference(request)
+
+    def _read_approved_reference(self, request: GenerationRequest) -> bytes:
+        try:
+            data = self._references.read(request.reference.location)
+        except (StorageError, OSError):
+            raise InvalidReference from None
+        if hashlib.sha256(data).hexdigest() != request.reference_sha256:
+            raise InvalidReference
+        return data
+
     def generate(self, request: GenerationRequest, stop: StopSignal) -> GenerationOutput:
         pipeline, facts = self._pipeline, self._facts
         if pipeline is None or facts is None:
@@ -430,9 +457,9 @@ class Wan21UpstreamAdapter:
                 raise GenerationTimeout
 
         checkpoint()
-        final, partial = self._reserve_output(request.output_uri)
-        committed = False
+        reservation = self._reserve_output(request.output_uri)
         probe: ConditioningProbe | None = None
+        staged = False
         try:
             image, reference, geometry = self._open_reference(request, call.max_area)
             checkpoint()
@@ -469,46 +496,35 @@ class Wan21UpstreamAdapter:
                 raise UpstreamGenerationFailed  # the executor records prohibited_module_loaded
             checkpoint()
             with _no_remote_access():
-                self._runtime.save_video(video, partial, facts.sample_fps)
+                self._runtime.save_video(video, reservation.partial_path, facts.sample_fps)
             del video
-            os.chmod(partial, 0o600)
-            os.replace(partial, final)
-            committed = True
+            # Staged only: the executor commits after its own post-generation checks.
+            self._staged[request.output_uri] = reservation
+            staged = True
             return output
         except OSError:
             raise OutputRejected from None
         finally:
             if probe is not None:
                 probe.release()
-            if not committed:
-                self._discard(final, partial)
-            else:
-                self._pending = [p for p in self._pending if p not in (final, partial)]
+            if not staged:
+                self._discard_reservation(reservation)
 
-    def _reserve_output(self, artefact_uri: str) -> tuple[Path, Path]:
-        """Create both files exclusively (0600), so an attempt can never overwrite another."""
-        created: list[Path] = []
+    def _reserve_output(self, artefact_uri: str) -> Reservation:
+        """Exclusive owner-only partial plus a ledger marker; a spent attempt is never reused."""
+        if artefact_uri in self._staged or artefact_uri in self._committed:
+            raise OutputRejected
         try:
-            final = self._artefacts.local_path(artefact_uri)
-            if final.suffix != ".mp4":
-                raise OutputRejected
-            partial = final.with_name(f".{final.stem}.partial{final.suffix}")
-            final.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-            for path in (final, partial):
-                os.close(os.open(path, flags, 0o600))
-                created.append(path)
-        except Exception:
-            self._discard(*created)
+            return self._artefacts.reserve(artefact_uri)
+        except StorageError:
             raise OutputRejected from None
-        self._pending.extend((final, partial))
-        return final, partial
 
     def _open_reference(
         self, request: GenerationRequest, max_area: int
     ) -> tuple[Any, Any, tuple[int, int]]:
+        data = self._read_approved_reference(request)  # re-verified: the file may have changed
         try:
-            image = self._runtime.open_reference(request.reference.location)
+            image = self._runtime.decode_reference(data)
             height, width = self._runtime.image_size(image)
         except MemoryError:
             raise GenerationResourceExhausted from None
@@ -522,6 +538,40 @@ class Wan21UpstreamAdapter:
         except Exception:
             raise InvalidReference from None
         return image, reference, expected_geometry(height, width, max_area)
+
+    # -- commit and rollback --------------------------------------------------------------------
+
+    def commit_output(self, request: GenerationRequest) -> None:
+        """Publish the staged output (identity-checked, no-replace); on failure nothing stays."""
+        reservation = self._staged.get(request.output_uri)
+        if reservation is None:
+            raise OutputRejected
+        try:
+            self._artefacts.commit(reservation)
+        except BaseException:
+            self._staged.pop(request.output_uri, None)
+            self._rollback(reservation)
+            raise
+        self._staged.pop(request.output_uri, None)
+        self._committed[request.output_uri] = reservation
+
+    def discard_output(self, request: GenerationRequest) -> None:
+        """Roll a committed output back (only the file this adapter committed). Idempotent."""
+        reservation = self._committed.pop(request.output_uri, None)
+        if reservation is not None:
+            self._rollback(reservation)
+        staged = self._staged.pop(request.output_uri, None)
+        if staged is not None:
+            self._discard_reservation(staged)
+
+    def _rollback(self, reservation: Reservation) -> None:
+        with contextlib.suppress(StorageError):
+            self._artefacts.rollback(reservation)
+        self._discard_reservation(reservation)
+
+    def _discard_reservation(self, reservation: Reservation) -> None:
+        with contextlib.suppress(StorageError):
+            self._artefacts.discard(reservation)
 
     def _call_upstream(self, pipeline: Any, prompt: str, image: Any, call: UpstreamCall) -> Any:
         try:
@@ -548,18 +598,14 @@ class Wan21UpstreamAdapter:
             raise OutputContractViolation
         return shape[0], shape[1], shape[2], shape[3]
 
-    def _discard(self, *paths: Path) -> None:
-        for path in paths:
-            with contextlib.suppress(OSError):
-                path.unlink(missing_ok=True)
-        self._pending = [p for p in self._pending if p.exists() or p.is_symlink()]
-
     # -- cleanup ------------------------------------------------------------------------------
 
     def cleanup(self) -> None:
-        """Remove any reserved or partial output left by an attempt and free GPU memory."""
-        self._discard(*self._pending)
-        leftover = bool(self._pending)
+        """Discard any staged (uncommitted) output and free GPU memory; committed files stay."""
+        leftover = False
+        for uri, reservation in list(self._staged.items()):
+            self._discard_reservation(reservation)
+            del self._staged[uri]
         try:
             self._runtime.release_memory()
         except Exception:
@@ -581,7 +627,6 @@ __all__ = [
     "WAN21_I2V_PICKLE_FILES",
     "WAN21_I2V_REQUIRED_FILES",
     "WAN21_UPSTREAM_PRECISION",
-    "ArtefactLocator",
     "InvalidReference",
     "OutputRejected",
     "UnsupportedConfiguration",

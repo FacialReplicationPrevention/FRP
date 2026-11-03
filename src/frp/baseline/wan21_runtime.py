@@ -125,7 +125,9 @@ class UpstreamRuntime(TensorInspector, Protocol):
 
     def config_facts(self, pipeline: Any) -> UpstreamConfigFacts: ...
 
-    def open_reference(self, location: str) -> Any: ...
+    def decode_reference(self, data: bytes) -> Any:
+        """Decode already hash-verified reference bytes (never a path)."""
+        ...
 
     def image_size(self, image: Any) -> tuple[int, int]:
         """(height, width) of the opened reference."""
@@ -324,9 +326,9 @@ class TorchWanRuntime:
 
     # -- reference and output ----------------------------------------------------------------
 
-    def open_reference(self, location: str) -> Any:
+    def decode_reference(self, data: bytes) -> Any:
         image_module = importlib.import_module("PIL.Image")
-        with image_module.open(location) as image:  # generate.py L392: Image.open(...).convert
+        with image_module.open(io.BytesIO(data)) as image:  # generate.py L392: open(...).convert
             return image.convert("RGB")
 
     def image_size(self, image: Any) -> tuple[int, int]:
