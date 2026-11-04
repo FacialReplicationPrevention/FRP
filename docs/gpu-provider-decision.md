@@ -33,9 +33,9 @@ Labels as in [3E §0](gpu-evidence-delta.md). Nothing is FRP-MEASURED. Only text
 
 | ID | Claim | Label and scope | Not supported by it |
 | --- | --- | --- | --- |
-| L1 | Lambda 1× H100 PCIe 80 GB, 26 vCPU, 225 GiB RAM, 1 TiB SSD, USD $3.29 per GPU-hour plus tax; docs SKU table "as of December 2025" | **PRIOR-RETRIEVAL** — Ada's independent read of `lambda.ai/instances`, 2026-11-04 (3E §1, E5). **Not re-read here** (DNS failure, §2.1) | Quote, region, stock, quota, currency beyond USD, billing minimum |
-| L2 | Lambda on-demand docs cover VM instances, root storage, NFS filesystems, regions, base images | **PRIOR-RETRIEVAL** — Ada, `docs.lambda.com/public-cloud/on-demand/`, 2026-11-04; summary only | Which page states what; dedicated-VM/GPU-passthrough boundary |
-| L3 | Terminate via console/API; in-guest poweroff does not stop billing; one-minute increments; no egress fee; persistent filesystems are NFS | **SECONDARY** (3D search snippets 2026-11-03); NFS partly covered by L2 | Anything about guest-independent kill being sufficient |
+| L1 | Lambda 1× H100 PCIe 80 GB, 26 vCPU, 225 GiB RAM, 1 TiB SSD, USD $3.29 per GPU-hour plus tax; docs SKU table "as of December 2025" | **PRIOR-RETRIEVAL** — Ada's independent read of `lambda.ai/instances`, 2026-11-04 (3E §1, E5), and re-read by Ada for this PR (§2.2). **Not re-read by the author** (DNS failure, §2.1) | Quote, region, stock, quota, currency beyond USD, billing minimum |
+| L2 | Lambda on-demand docs cover VM instances, root storage, NFS filesystems, regions, base images | **PRIOR-RETRIEVAL** — Ada, `docs.lambda.com/public-cloud/on-demand/`, 2026-11-04; summary only; §2.2 adds the reviewer-reported "Linux-based, GPU-backed virtual machine instances" wording | Dedicated-VM/GPU-passthrough boundary, host single tenancy, filesystem backing |
+| L3 | Terminate via console/API; in-guest poweroff does not stop billing; one-minute increments; no egress fee; persistent filesystems are NFS | **SECONDARY** (3D search snippets 2026-11-03) for all parts; the termination, poweroff and one-minute-billing parts also have reviewer-attributed primary scope (§2.2); "no egress fee" and NFS stay secondary (NFS partly covered by L2) | Anything about guest-independent kill being sufficient; a spend cap |
 | L4 | Spend limit or liability bound, outbound deny, quota, Terms/AUP/DPA, snapshots, post-stop charges, API credential scopes | **UNVERIFIED** — nothing found; absence from a summary is not proof the vendor cannot offer it | — |
 | R1 | Prepaid credits; billing every 5 min; $0 balance stops Pods (terminates, unrecoverable, if no network volume); auto-pay at most hourly; minimum one hour of credit to deploy; default spend limit **$80/h** across all resources; credits non-refundable; prepaid *cards* "should deposit at least $100 per transaction" | **PRIMARY-VENDOR** — `runpod/docs` @ [`93f2147…`](https://github.com/runpod/docs/blob/93f2147761903839f4a2b3e595117f4f20fd9a89/accounts-billing/billing.mdx) (committed 2026-11-04T15:16:02Z), read 2026-11-04; rendered pages not opened. GitHub compare shows only `serverless/endpoints/endpoint-configurations.mdx` changed since the 3E commit `bb50dd3`, so 3E §4.2 statements are textually unchanged | A total cap, a liability bound, or invoice terms; GPU rates (docs say rates are shown in the console) |
 | R2 | GPU catalogue lists H100 SXM 80, H100 PCIe 80, **H100 NVL 94 GB**; no host RAM/vCPU listed. "$3.19/h, 16 vCPU, 94 GB RAM" is **SECONDARY** (3D); the 94 there is host RAM, a *different* quantity from the 94 GB device VRAM | **PRIMARY-VENDOR** ([`references/gpu-types.mdx`](https://github.com/runpod/docs/blob/93f2147761903839f4a2b3e595117f4f20fd9a89/references/gpu-types.mdx)) for the catalogue only | Which SKU is offered in which region; host RAM; rate |
@@ -57,9 +57,24 @@ Labels as in [3E §0](gpu-evidence-delta.md). Nothing is FRP-MEASURED. Only text
 | `api.github.com` (`runpod/docs` @ `93f2147…`) | GitHub API, read-only | Reachable → R1–R6 |
 | Official Lambda documentation source on GitHub | Repository search of the `lambdal` organisation | None found → Lambda stays on L1–L2 (Ada) and L3 (secondary) |
 
-L1/L2 and H1 are **not upgraded**; they keep 3E's attribution. 3E's independent Ada reads and Runpod `bb50dd3` reads are preserved at their original scope; no moving `main` reference is used.
+L1/L2 and H1 are **not upgraded** by the author's own retrieval; they keep 3E's attribution (L1–L3 gain only the reviewer-attributed scope in §2.2). 3E's independent Ada reads and Runpod `bb50dd3` reads are preserved at their original scope; no moving `main` reference is used.
 **Operator evidence request (privately, on a networked machine, metadata only, no login or calculator):** re-read the Lambda pricing and on-demand/billing/filesystem pages, the Runpod public
 pricing and legal pages and the pinned Hub card/tree; record URL, date, effective date, exact line and currency/region scope in the private record.
+
+### 2.2 Reviewer-attributed primary-source delta (Ada, 2026-11-04, PR #24 review; not retrieved by the author)
+
+Ada reports reading these official Lambda pages on 2026-11-04. The author could not (§2.1) and has **not** re-read them; they are recorded at the reviewer's stated scope, and the §2.1 failure log above is unchanged.
+Label: **PRIMARY-VENDOR, REVIEWER-ATTRIBUTED**. Text only; no account, console, calculator or form.
+
+| URL | Reported content (scope) | Not supported by it |
+| --- | --- | --- |
+| `https://lambda.ai/instances` | Published 1× H100 PCIe 80 GB; 26 vCPU; 225 GiB host RAM; 1 TiB SSD; USD $3.29 per GPU-hour plus tax (confirms L1) | Quote, region, stock, quota, cap |
+| `https://docs.lambda.com/public-cloud/on-demand/` | Describes Linux-based, GPU-backed virtual machine instances (supports L2) | Host single tenancy, GPU passthrough/dedicated-VM guarantee, filesystem backing |
+| `https://docs.lambda.com/public-cloud/billing/` | One-minute billing increments; charges run from passing health checks until instance termination; filesystems are billed separately and continue | A spend cap, a liability bound, tax or post-stop limits |
+| `https://docs.lambda.com/public-cloud/on-demand/creating-managing-instances/` | Provider API termination is documented; in-guest `shutdown`/`poweroff` does **not** stop charges | Terminate-only credential scope, drill result, sufficiency as a kill control |
+
+Effect: L1, L2 and the billing-granularity, termination and in-guest-poweroff parts of L3 are now scoped primary reviewer-attributed evidence; "no egress fee" and NFS-filesystem details in L3 stay as before. L4 is unchanged (still UNVERIFIED).
+This is **not** a quote, cap, GPU fit, dedicated-host guarantee, outbound-deny, accepted term or approval, and no hard-blocker row in §4 is cleared by it.
 
 ## 3. Distinctions this decision depends on
 
@@ -77,8 +92,7 @@ pricing and legal pages and the pinned Hub card/tree; record URL, date, effectiv
 | Synthetic image (R2, still a provider transfer; proposal only) | Approved biometric processing (R1, real adults; gates 2/3/4) |
 
 **Bounded cost illustration (the only one the evidence supports).** *Runpod stopped volume disk*, USD, per-second billing, excluding tax, "GB" and "month" undefined (30 days assumed for the daily figure):
-250 × $0.20 = $50.00 per month (≈ $1.67 per day) retained after stop, against 250 × $0.10 = $25.00 per month while running (R4; same as 3E §4.2). **No compute illustration is given:** Lambda's list rate has no
-primary billing granularity or retained-storage statement (L3 is secondary), and Runpod's GPU rate is not in its documentation. Unknown stays unknown. No budget ceiling is set or implied; the $80/h default
+250 × $0.20 = $50.00 per month (≈ $1.67 per day) retained after stop, against 250 × $0.10 = $25.00 per month while running (R4; same as 3E §4.2). **No compute illustration is given:** Lambda's published list rate (L1) and one-minute billing granularity (§2.2) are reviewer-attributed only and are neither a quote nor a retained-storage cost, and Runpod's GPU rate is not in its documentation. Unknown stays unknown. No budget ceiling is set or implied; the $80/h default
 limit is a rate limit far above any single-GPU hourly rate in the 3D snippets and does not bound a run.
 
 ## 4. Hard blockers and reversal criteria
@@ -88,7 +102,7 @@ Missing critical evidence is **NO-GO**, never "probably acceptable". Each row mu
 | Control | Lambda: today / disqualifier / minimum to clear | Runpod: today / disqualifier / minimum to clear |
 | --- | --- | --- |
 | **Total billable cap + written limit on late/post-stop charges** | No mechanism found (L4). *Disqualify:* none offered, or a limit that is only alerts or in-guest. *Clear:* written vendor confirmation of an independently enforced cap, behaviour and delay at the limit, and a written bound on post-stop liabilities | Prepaid balance + $80/h rate limit (R1); destructive at $0; auto-pay, 5-min lag and other products drawing on the balance are open. *Disqualify:* no written bound on lag overshoot, stopped-volume and network-volume accrual, or if the funding workaround is the only control. *Clear:* written answer to P0-1 and a tested ceiling |
-| **Provider-API kill independent of the guest; zero-data drill first** | Console/API terminate (L3, secondary); in-guest poweroff does not stop billing. *Disqualify:* drill not rehearsed, or only the guest can stop. *Clear:* off-instance terminate from a separate machine/credential on a trivial zero-data instance, then listings showing nothing remains | CLI/REST/console terminate (R5); the in-guest timer pattern is **not** this control. *Disqualify:* no terminate-only or separately held credential, or a billing-capable key in the guest. *Clear:* credential scope and custody (P0-2), plus the drill |
+| **Provider-API kill independent of the guest; zero-data drill first** | Console/API terminate and in-guest poweroff not stopping billing (L3; reviewer-attributed, §2.2). *Disqualify:* drill not rehearsed, or only the guest can stop. *Clear:* off-instance terminate from a separate machine/credential on a trivial zero-data instance, then listings showing nothing remains | CLI/REST/console terminate (R5); the in-guest timer pattern is **not** this control. *Disqualify:* no terminate-only or separately held credential, or a billing-capable key in the guest. *Clear:* credential scope and custody (P0-2), plus the drill |
 | **Verified outbound-deny after download** | Unknown (L4). *Disqualify:* cannot block and verify at the network layer. *Clear:* provider configuration record and an in-guest sacrificial attempt (3E §7) | No setting found (R6; absence ≠ proof). *Disqualify:* as for Lambda. *Clear:* same, plus ffmpeg and any provider telemetry covered |
 | **Local attested Linux block storage; no NFS/network/overlay** | Persistent filesystems are NFS ⇒ excluded; 1 TiB root-disk locality unknown. *Disqualify:* cannot attest the root/checkpoint volume | Network and global volumes excluded; volume-disk backing unknown (R4). *Disqualify:* cannot show host-local block storage rather than bind mount/overlay; provider data migration without control |
 | **Terms/AUP/DPA/privacy/region** | Unread. *Disqualify:* terms bar face media/likeness, no DPA for a later adult-face dataset, or no acceptable region. *Clear:* qualified legal reading (gate 4) | Unread; GDPR text only (R3). *Disqualify:* as for Lambda; Community Cloud for any identifiable data |
@@ -118,16 +132,17 @@ Status for every row: **not asked**. Mapping to 3E: P0-1 ← V1–V3; P0-2 ← V
 
 ## 6. Private handoff (description only; each step needs its own fresh explicit approval)
 
-The seven-gate dependencies stand: gate 5 needs gate 4 reviewed for the chosen provider; gate 6 needs 1, 3, 4, 5 plus a fresh decision; gate 7 needs 1–6. This sequence completes no gate.
+The seven-gate dependencies stand: gate 5 needs gate 4 reviewed for the chosen provider; gate 6 needs 1, 3, 4, 5 plus a fresh decision; gate 7 needs 1–6. This sequence completes no gate, and no step is authorised by this PR.
 
 1. Qualified source/checkpoint licence review at the pins (gate 1).
 2. Decide reference class and legal/privacy requirements (gate 2). R2 (licensed synthetic portrait) first is a **proposed** protocol decision with its own source-licence check and exempts no control; R1 (real consenting adults) needs specific consent, legal, storage and provider review. Experiment 003 is unchanged.
-3. Choose the candidate region/SKU and obtain the exact dated quote and quota (gates 4/5).
-4. Independently validate the hard cap, post-stop liability and provider-side emergency terminate (gate 5). A zero-data drill needs a provider account and spends; the seven-gate protocol has no separate slot for it, so the owner must decide whether it sits inside the gate-5 cap. **Escalate to Ada.**
-5. Review DPA/AUP, egress control and physical/virtual volume backing (gates 3/4); choose custody and retention/deletion policy (gate 3).
-6. Separately approve the dependency lock and environment build (3E §5).
-7. Obtain gate-6 checkpoint authority and hash evidence.
-8. Separately approve **one** controlled gate-7 smoke run, a technical pipeline test that measures no identity retention and supports no protection claim; the later real-person scientific baseline stays separate.
+3. Decide custody, retention and deletion policy (gate 3).
+4. Review provider terms/AUP/DPA/privacy/region, egress control and physical/virtual volume backing for the chosen provider (gate 4; inputs to gate 3 where they bear on storage). Nothing in gate 5 may be treated as accepted before this review.
+5. Only after step 4, and only with separately approved outreach (§5): choose the candidate region/SKU and obtain the exact dated quote and quota as **gate-5 input**. Collecting a quote is not passing gate 5, and no quote, quota or budget cap is accepted until gate 5 is separately approved.
+6. Independently validate the hard cap, post-stop liability and provider-side emergency terminate (gate 5). A zero-data termination/cap drill needs a provider account and spend, and the seven-gate protocol has no slot for it. It must therefore be preceded by a **separate, expressly approved, tightly bounded no-data preflight** with its own controls (owner, cap, scope, termination and record). That preflight is not gate-7 permission, does not satisfy any gate, and nobody has authority to perform it under this PR. If it cannot be bounded lawfully under the existing gate rules, the outcome stays NO-GO / NO PROVIDER and is escalated, not worked around. **Escalate to Ada.**
+7. Separately approve the dependency lock and environment build (3E §5).
+8. Obtain gate-6 checkpoint authority and hash evidence.
+9. Separately approve **one** controlled gate-7 smoke run, a technical pipeline test that measures no identity retention and supports no protection claim; the later real-person scientific baseline stays separate.
 
 **Private record only, never GitHub:** account details, quotes and approvals, private hashes, credentials, grant tokens and ledger keys, mount points, deletion and cost logs, portraits, outputs, embeddings, screenshots.
 **If a private implementation cannot meet cap, egress, filesystem, loader or grant-revocation constraints, stop and escalate; do not add a public executable workaround** (launcher, watchdog, kill, grant provider, deployment automation).
