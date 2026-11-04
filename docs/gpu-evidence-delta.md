@@ -54,6 +54,13 @@ the pinned Hugging Face [README](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-48
 [pricing](https://lambda.ai/instances) and [on-demand docs](https://docs.lambda.com/public-cloud/on-demand/). The author's own sandbox failures above stand unchanged; they are not
 contradicted, and nothing here implies the author's retrieval succeeded. A full recursive inventory was **not** completed, no checkpoint hash was verified, and no licence use is approved.
 
+**Follow-up retrieval attempt (2026-11-04 ≈ 14:20 UTC, after [PR #21](https://github.com/FacialReplicationPrevention/FRP/pull/21) merged; agent sandbox, read-only).** Plain HTTPS
+(`curl`), a second fetch tool and a headless browser were each tried against the pinned model-card raw URL, the pinned tree page and the Hub tree-API route, plus `lambda.ai/pricing`,
+`docs.runpod.io` and an AWS instance-types page. Every route to Hugging Face and to the vendor sites failed (no DNS resolution, or the browser blocked the request); only the GitHub API
+was reachable. No page content was obtained, nothing was cached, and no blob, LFS object or checkpoint repository was touched. **Consequences:** E2, E3, E5 (Runpod/AWS), E7 and E8 in §2
+are unchanged and **unresolved**; the author-side Hub evidence remains UNVERIFIED, and the Lambda/Hub statements remain scoped to Ada's separately attributed retrieval above. The next
+resolution path is §3.2 (operator on a networked machine, metadata only, pinned revision, never `main`).
+
 A chat/search answer is not used as a citation anywhere in this document.
 
 ## 2. Evidence-delta table
