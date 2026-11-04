@@ -68,7 +68,7 @@ A chat/search answer is not used as a citation anywhere in this document.
 | E4 | Dependencies, Python/torch/flash-attn requirements | `requirements.txt` read | New: `requirements.txt` SHA-256; `pyproject.toml` Python range; flash-attn is optional at import with an SDPA fallback; PyTorch CUDA matrix; flash-attn wheel *names* (§5) | Frozen, hashed lock built later (§5.2) |
 | E5 | Vendor rates, regions, host RAM, scratch | SECONDARY / snippets | **Author: vendor sites unreachable.** **Ada: Lambda official pricing lists 1× H100 PCIe 80 GB, 26 vCPU, 225 GiB RAM, 1 TiB SSD at USD $3.29/GPU-hour plus tax (retrieved 2026-11-04; the docs' SKU specs table is dated "as of December 2025"); Lambda ODC docs cover VM instances, root storage, NFS filesystems, regions and base images.** Scoped PRIMARY-VENDOR for Lambda, not an accepted quote or regional availability. Runpod rates remain SECONDARY. Runpod docs text gives billing/storage/isolation facts only | Operator re-reads vendor pages and records privately |
 | E6 | Runpod billing, low-balance and storage semantics | Snippets | **PRIMARY-VENDOR** (docs source): confirmed prepaid credits, 5-minute billing, $0 behaviour; **new** default $80/h spend limit, minimum one-hour balance, auto-pay cadence, stopped-pod storage rates (§4.1) | Written vendor confirmation (§4.4) |
-| E7 | Lambda terminate/no-egress-fee/NFS/no spend limit | Snippets | Unchanged, **UNVERIFIED** | Same |
+| E7 | Lambda terminate/no-egress-fee/NFS/no spend limit | Snippets | Partly covered by Ada's reading of Lambda's official pricing and ODC docs (VM instances, root storage, NFS filesystems; scope per §1): treat NFS and published-list claims as scoped PRIMARY-VENDOR. Termination semantics, no-egress-fee wording and the absence of a spend limit remain **UNVERIFIED** (not confirmed in Ada's summary) | Operator re-reads the official pages and records privately |
 | E8 | AWS Budgets lag, `p5.4xlarge` rate | Snippets / SECONDARY | Unchanged, **UNVERIFIED**; AWS docs on GitHub are archived and unusable | P3 not refreshed here |
 | E9 | Linux environment (torch/CUDA/flash-attn/ffmpeg, directories, network phases) | Risk R9 only | New specification §5 (all PROPOSED; compatibility UNVERIFIED on hardware) | Private build and record |
 | E10 | Windows/Docker bind-mount caveat | Not addressed | §6 | Operator attestation |
@@ -127,7 +127,7 @@ Missing, extra or mismatching files are STOP (D§5.2 step 14–15). Provenance s
 
 1. Does the README's "must not involve … disseminates personal information intended for harm" sentence add conditions beyond the Apache-2.0 text, and how
    would a reviewer read it for a private, non-sharing technical test with neutral prompts?
-2. Does the **checkpoint model card** at `6b73f84…` carry the same or different wording, and is there a separate licence file in the checkpoint repository? (Unread.)
+2. Ada read the pinned [model card](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/6b73f84e66371cdfe870c72acd6826e1d61cf279/README.md) and [`LICENSE.txt`](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/6b73f84e66371cdfe870c72acd6826e1d61cf279/LICENSE.txt) (see §1). The card has `license: apache-2.0` and a License Agreement/accountability paragraph (relevant terms are at that link; they are not adjudicated or paraphrased as permission here). How should a qualified reviewer interpret that paragraph and `LICENSE.txt` for a private, non-sharing technical test, and do they add conditions beyond the README sentence in question 1?
 3. The checkpoint bundles third-party components (a T5-family text encoder, a CLIP-family image encoder, tokenizers from other model families). Do their own
    licences or terms apply independently of the Apache-2.0 declaration? (Unreviewed; no claim is made.)
 4. Does research use involving **face likeness or biometric-derived data** (even synthetic, even later) interact with any term?
@@ -185,7 +185,7 @@ Legend: **V** PRIMARY-VENDOR this PR; **S** SECONDARY/snippet (dossier); **U** U
 | Billing minimum/granularity | 1-minute increments [S] | Per second; 5-minute billing cycle; one-hour minimum balance [V] | |
 | Spend cap mechanism | None found [S] | Prepaid balance + $80/h default rate limit [V]; not a total cap | **No vendor-verified total cap exists in the evidence for either** ⇒ NO-GO under D§8-2 until answered |
 | Post-stop liability | Filesystems per GiB-month [S] | Stopped volume disk $0.20/GB-month; network volume accrues at $0 balance [V] | Written bound required |
-| Egress: block/verify | **U** | Not documented [V: absent] | Vendor question V4 |
+| Egress: block/verify | **U** | Not documented [V: absent] | Vendor question V5 (V4 is storage backing) |
 | Egress fees | "None" [S] | "None" [V] | Not a security property |
 | Terms / AUP / DPA | Unread **U** | Unread (legal pages not retrieved) **U** | Gate 4 (H) |
 | API termination | Console/API terminate [S]; in-guest poweroff does not stop billing [S] | CLI/API/console terminate [V]; in-guest timer pattern documented [V] | Independent external watchdog still required |
