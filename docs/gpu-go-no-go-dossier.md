@@ -4,7 +4,7 @@
 No GPU, no checkpoint, no real-person media, no biometric evaluation, no media transfer to any provider. All seven human gates in the
 [GPU readiness protocol](gpu-readiness.md) stay **pending**; `readiness/wan21-i2v-baseline.yaml` and
 `provenance/model-candidates.yaml` are unchanged (`not_ready`). A rate card is not a quote, a merged PR is not an approval,
-and a passing test is not evidence about a GPU.
+and a passing test is not evidence about a GPU. Follow-up (PR 3E, planning only): [evidence delta](gpu-evidence-delta.md) marks which assertions here remain UNVERIFIED after a primary-source retrieval attempt.
 
 **Issue:** [#18](https://github.com/FacialReplicationPrevention/FRP/issues/18) (parent [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) stays open;
 [#14](https://github.com/FacialReplicationPrevention/FRP/issues/14) stays blocked). **Builds on:** [gpu-readiness](gpu-readiness.md),
