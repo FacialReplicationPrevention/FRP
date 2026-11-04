@@ -1,6 +1,6 @@
 # FRP roadmap
 
-**Last updated:** 2026-11-02  
+**Last updated:** 2026-11-04  
 **Operating principle:** Establish reliable measurements and a reproducible experiment before committing resources to intrinsic model protection or tamper resistance.
 
 ## Progress overview
@@ -127,7 +127,7 @@ Milestone 003: [#7](https://github.com/FacialReplicationPrevention/FRP/issues/7)
 
 **PR 3D — GPU procurement evidence and private go/no-go handoff (merged, planning only, [#19](https://github.com/FacialReplicationPrevention/FRP/pull/19), issue [#18](https://github.com/FacialReplicationPrevention/FRP/issues/18)).** Documentation only: the [GPU go/no-go dossier](docs/gpu-go-no-go-dossier.md) records unverified provider/hardware evidence, illustrative cost scenarios, PR 3C residual risks, a proposed single-condition smoke spec and the seven gates. NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE; no quote, cap or approval; all seven gates pending; #9 stays open and #14 blocked.
 
-**PR 3E — Verify external evidence and prepare reproducible private GPU environment (merged, planning only, [#21](https://github.com/FacialReplicationPrevention/FRP/pull/21), issue [#20](https://github.com/FacialReplicationPrevention/FRP/issues/20) still open).** Documentation only: the [evidence-delta document](docs/gpu-evidence-delta.md) records what could and could not be verified from primary sources (Hugging Face and vendor pages were unreachable from the authoring sandbox and stay UNVERIFIED; a later retrieval attempt, §1, failed the same way), a provider comparison matrix, a proposed Linux environment specification and blockers. NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE; no quote, cap, provider selection or approval; all seven gates pending; #9 stays open and #14 blocked.
+**PR 3E — Verify external evidence and prepare reproducible private GPU environment (merged, planning only, [#21](https://github.com/FacialReplicationPrevention/FRP/pull/21), issue [#20](https://github.com/FacialReplicationPrevention/FRP/issues/20) still open).** Documentation only: the [evidence-delta document](docs/gpu-evidence-delta.md) records what could and could not be verified from primary sources (author-side retrieval of Hugging Face and vendor pages failed, as did a later attempt, §1; Ada's separately attributed pinned-card/tree and Lambda reads remain scoped primary evidence, while the recursive inventory and digests, terms, quota/quote and verified hardware/network/storage suitability stay unresolved), a provider comparison matrix, a proposed Linux environment specification and blockers. NO GPU / NO WEIGHTS / NO REAL MEDIA / NO LIVE INFERENCE; no quote, cap, provider selection or approval; all seven gates pending; #9 stays open and #14 blocked.
 
 - [x] Hardened local private store (`frp.private_storage`): owner-only canonical roots, race-resistant reservation, **deferred output commit with inode-checked rollback** (a late rejection leaves no MP4), keyed attempt ledger and withdrawal tombstones that deletion cannot reopen. CPU-tested with synthetic fixtures only.
 - [x] Immutable per-call grants: expiry, artefact and reference scope, attempt cap, and an identical canonical grant required at four re-check points.
