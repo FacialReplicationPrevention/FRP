@@ -28,7 +28,7 @@ The dossier's labels (D§0) are reused; the right-hand column maps this document
 | **FRP-MEASURED** | Measured by FRP on real hardware. **None exists.** | `[FRP-measured]` |
 | **HUMAN-PENDING** | A human decision or private record that does not exist | `PENDING` |
 
-Three distinctions that this document never blurs: (a) a **Hub-reported SHA-256** (platform metadata for LFS objects) ≠ a **Git blob id**
+Three distinctions that this document never blurs: (a) a **Hub-reported identifier/SHA-256** (platform metadata; the pinned tree is Xet-backed, so LFS-style SHA-256 availability is unconfirmed) ≠ a **Git blob id**
 (SHA-1 identifier of an ordinary Git-tracked file) ≠ a **locally computed SHA-256** (only after an approved download; none exists) ≠ a **private
 expected-digest manifest** (reviewed outside this repository); (b) a **public list rate** ≠ a **dated quotation** (none); (c) **published host
 specification** ≠ **demonstrated fit** (nothing has been run).
@@ -45,7 +45,14 @@ object, container image or wheel was downloaded, and the checkpoint repository w
 | `lambda.ai`, `docs.lambda.ai`, `runpod.io` (marketing/pricing), `aws.amazon.com`, `docs.aws.amazon.com` | **Failed** (same) | All rates, regions, host specs and legal pages remain **SECONDARY/UNVERIFIED** unless noted in §4 |
 | `docs.runpod.io` source repository `runpod/docs` on GitHub | Reachable; read at commit `bb50dd3e90ddb2dfedf2d0c89fa8ed3feeadd01f` (committed 2026-11-03T19:04:18Z) | **PRIMARY-VENDOR** for Runpod documentation *text* only (rendered pages not opened; prices are not in the docs) |
 | AWS documentation repositories on GitHub | Archived since June 2023 | Too old to support any 2026 claim; not used |
-| Lambda documentation source | No official public source repository found | Unavailable |
+| Lambda documentation source | No official public source repository found | Unavailable to the author; Ada independently read Lambda's official pages (see below) |
+
+**Separately attributed independent retrieval (Ada review of this PR, 2026-11-04; read-only public browsing; recorded here from the review comment, not re-performed by the PR author).** Ada reached
+the pinned Hugging Face [README](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/6b73f84e66371cdfe870c72acd6826e1d61cf279/README.md),
+[file tree](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/tree/6b73f84e66371cdfe870c72acd6826e1d61cf279) and
+[LICENSE.txt](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/blob/6b73f84e66371cdfe870c72acd6826e1d61cf279/LICENSE.txt), plus Lambda's official
+[pricing](https://lambda.ai/instances) and [on-demand docs](https://docs.lambda.com/public-cloud/on-demand/). The author's own sandbox failures above stand unchanged; they are not
+contradicted, and nothing here implies the author's retrieval succeeded. A full recursive inventory was **not** completed, no checkpoint hash was verified, and no licence use is approved.
 
 A chat/search answer is not used as a citation anywhere in this document.
 
@@ -56,10 +63,10 @@ A chat/search answer is not used as a citation anywhere in this document.
 | # | Assertion | 3D state | Today (2026-11-04) | Residual action (HUMAN/operator) |
 | --- | --- | --- | --- | --- |
 | E1 | Source licence is Apache-2.0 and what the README adds | PRIMARY-PINNED read 2026-11-03 | Re-read; unchanged. `LICENSE.txt` SHA-256 recorded (§3.1) | Gate 1 human review |
-| E2 | Checkpoint **model card** text, licence statements, gating | Not retrieved | **Still not retrieved** (Hub unreachable). Card metadata `apache-2.0`, not gated: PRIOR-RETRIEVAL (Research 005, 2026-10-30) | Read the card at `6b73f84…` from a networked machine; gate 1 |
-| E3 | Hub file inventory (count, names, sizes, LFS SHA-256, Git blob ids) | Sizes ≈ 82.3 GB (sum of Research 005 approximate sizes), no count | **Not retrieved.** Adds a source-derived *minimum* list of 20 files the adapter requires (§3.2) | Metadata-only Hub re-retrieval, then private expected-digest process (§3.3) |
+| E2 | Checkpoint **model card** text, licence statements, gating | Not retrieved | **Author: not retrieved** (Hub unreachable). **Ada (independent, 2026-11-04): pinned card has `license: apache-2.0` and a License Agreement/accountability paragraph; pinned `LICENSE.txt` read.** Earlier `apache-2.0`/not-gated record: PRIOR-RETRIEVAL (Research 005, 2026-10-30) | Qualified human licence review of card and `LICENSE.txt` (§3.4); gate 1 stays pending |
+| E3 | Hub file inventory (count, names, sizes, LFS SHA-256, Git blob ids) | Sizes ≈ 82.3 GB (sum of Research 005 approximate sizes), no count | **Author: not retrieved.** **Ada: pinned tree shows 82.3 GB and top-level file names/sizes; no complete recursive inventory.** Hashes remain unverified. Adds a source-derived *minimum* list of 20 files the adapter requires (§3.2) | Complete recursive metadata-only inventory, then private expected-digest process (§3.3) |
 | E4 | Dependencies, Python/torch/flash-attn requirements | `requirements.txt` read | New: `requirements.txt` SHA-256; `pyproject.toml` Python range; flash-attn is optional at import with an SDPA fallback; PyTorch CUDA matrix; flash-attn wheel *names* (§5) | Frozen, hashed lock built later (§5.2) |
-| E5 | Vendor rates, regions, host RAM, scratch | SECONDARY / snippets | **No change possible** (vendor sites unreachable); rates remain SECONDARY. Runpod docs text gives billing/storage/isolation facts only | Operator re-reads vendor pages and records privately |
+| E5 | Vendor rates, regions, host RAM, scratch | SECONDARY / snippets | **Author: vendor sites unreachable.** **Ada: Lambda official pricing lists 1× H100 PCIe 80 GB, 26 vCPU, 225 GiB RAM, 1 TiB SSD at USD $3.29/GPU-hour plus tax (retrieved 2026-11-04; the docs' SKU specs table is dated "as of December 2025"); Lambda ODC docs cover VM instances, root storage, NFS filesystems, regions and base images.** Scoped PRIMARY-VENDOR for Lambda, not an accepted quote or regional availability. Runpod rates remain SECONDARY. Runpod docs text gives billing/storage/isolation facts only | Operator re-reads vendor pages and records privately |
 | E6 | Runpod billing, low-balance and storage semantics | Snippets | **PRIMARY-VENDOR** (docs source): confirmed prepaid credits, 5-minute billing, $0 behaviour; **new** default $80/h spend limit, minimum one-hour balance, auto-pay cadence, stopped-pod storage rates (§4.1) | Written vendor confirmation (§4.4) |
 | E7 | Lambda terminate/no-egress-fee/NFS/no spend limit | Snippets | Unchanged, **UNVERIFIED** | Same |
 | E8 | AWS Budgets lag, `p5.4xlarge` rate | Snippets / SECONDARY | Unchanged, **UNVERIFIED**; AWS docs on GitHub are archived and unusable | P3 not refreshed here |
@@ -85,33 +92,34 @@ A chat/search answer is not used as a citation anywhere in this document.
 
 These statements are **source observations**, not observed FRP behaviour.
 
-### 3.2 `Wan-AI/Wan2.1-I2V-14B-480P` @ `6b73f84…` — UNVERIFIED today; earlier metadata is PRIOR-RETRIEVAL
+### 3.2 `Wan-AI/Wan2.1-I2V-14B-480P` @ `6b73f84…` — author retrieval failed; Ada's independent read-only retrieval is recorded separately; hashes UNVERIFIED
 
-Requested and **not retrievable** on 2026-11-04 (DNS refusal, two tools):
+Author's requests were **not retrievable** on 2026-11-04 (DNS refusal, two tools); Ada's independent retrieval of the same pinned pages is recorded in §1:
 <https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/tree/6b73f84e66371cdfe870c72acd6826e1d61cf279> and
 <https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/raw/6b73f84e66371cdfe870c72acd6826e1d61cf279/README.md>.
 
 | Item | Status | What is and is not known |
 | --- | --- | --- |
-| Model card text and licence/usage statements | **UNVERIFIED** | Card metadata licence `apache-2.0`, "not gated" recorded by [Research 005](../research/005-wan-model-candidates.md) on 2026-10-30 (PRIOR-RETRIEVAL). The card *body* was never quoted in the repository; whether it repeats the GitHub README's accountability sentence is **unknown** |
-| File inventory (count, names, per-file bytes) | **UNVERIFIED** | Research 005 records only approximate component sizes: DiT ≈ 65.6 GB in 7 shards, T5 ≈ 11.4 GB, CLIP ≈ 4.8 GB, VAE ≈ 0.5 GB (sum ≈ 82.3 GB); no exact bytes and no file count |
+| Model card text and licence/usage statements | Author: **UNVERIFIED**. Ada: **read at the pin** | Ada reports `license: apache-2.0` and a License Agreement/accountability paragraph in the pinned card, and read the pinned `LICENSE.txt`. Earlier `apache-2.0`/"not gated" record: [Research 005](../research/005-wan-model-candidates.md), 2026-10-30 (PRIOR-RETRIEVAL). Reading is not approval; gate 1 stays pending |
+| File inventory (count, names, per-file bytes) | Author: **UNVERIFIED**. Ada: **partial** (top-level names/sizes, 82.3 GB total) | Not a complete recursive inventory; no verified file count. Research 005 records only approximate component sizes: DiT ≈ 65.6 GB in 7 shards, T5 ≈ 11.4 GB, CLIP ≈ 4.8 GB, VAE ≈ 0.5 GB (sum ≈ 82.3 GB); no exact bytes and no file count |
 | Minimum files FRP's adapter requires (source-derived, not Hub-derived) | PROPOSED expectation from [`wan21_adapter.py`](../src/frp/baseline/wan21_adapter.py) (`WAN21_I2V_REQUIRED_FILES`) | **20 files:** 3 `.pth` (T5, CLIP, VAE) + `config.json` + `diffusion_pytorch_model.safetensors.index.json` + 7 DiT shards + 6 tokenizer JSON files + `google/umt5-xxl/spiece.model` + `xlm-roberta-large/sentencepiece.bpe.model`. The adapter also refuses any *additional* pickle-format file. Whether the Hub tree contains further files (e.g. README, licence, example media) is **UNVERIFIED** — the private expected-file list must decide whether a download restricted to the required files is intended (a gate-6 choice) |
-| LFS SHA-256 per file | **UNVERIFIED** | The Hub reports these for LFS objects (Research 005 notes VAE and T5 digests equal those of the Wan 2.2 I2V-A14B repository at its pin). None is re-recorded here; they are platform metadata, not FRP verification |
+| Platform-exposed content identifiers per file | **UNVERIFIED** | The pinned tree labels files as **Files xet**, with large weights marked *xet*. Whether an LFS-style SHA-256 is published for each file is **unconfirmed**; none is claimed. (Research 005's note that VAE and T5 digests equal those of the Wan 2.2 I2V-A14B repository is PRIOR-RETRIEVAL.) None is re-recorded here; they are platform metadata, not FRP verification |
 | Git blob ids per file | **UNVERIFIED** | Apply to ordinary Git-tracked files (small text/JSON/tokenizer files); an identifier of Git object content, **not** a SHA-256 |
 
 **Later verification path (operator on a networked machine; metadata only).** Re-run the metadata-only retrieval described in
 [Research 005 §Method](../research/005-wan-model-candidates.md) against the **pinned revision URL** (never `main`), save the model card and the
-file list with its LFS and Git-object fields, and record date and tool. Do not fetch resolved file URLs, clone the repository, or invoke a
+file list with its Xet/LFS and Git-object fields, and record date and tool, requesting only identifiers the platform exposes (Xet and/or LFS/Git fields as shown). Do not fetch resolved file URLs, clone the repository, or invoke a
 download tool. Compare the list with the 20-file expectation above and record every difference as a finding.
 
 ### 3.3 Digest taxonomy and the private expected-digest process
 
 | Kind | Source | Where it may live | Proves |
 | --- | --- | --- | --- |
-| Hub-reported LFS SHA-256 | Hub metadata at the pin | Public notes *labelled platform-reported* (none committed by this PR) | Only what the platform says; trust in the platform |
+| Xet content metadata (pinned tree: *Files xet*) | Hub metadata at the pin | Public notes *labelled platform-reported* (none committed by this PR) | Only what the platform says; Xet identifiers are not assumed to equal an LFS or local SHA-256 |
+| Hub-reported LFS SHA-256 (only where the platform actually exposes one) | Hub metadata at the pin | Same | Only what the platform says; do not claim one is published where unconfirmed |
 | Git blob id | Hub/Git metadata | Same | Identity of a Git object (SHA-1); not usable as a SHA-256 |
 | Locally computed SHA-256 | Approved gate-6 download on a private host | **Private record only** | That these bytes exist on that host |
-| Private expected-digest manifest | Reviewed outside this repository: for LFS files, the Hub SHA-256 **plus** an independent confirmation (e.g. a second separately reviewed retrieval); for Git-tracked files, an independently established digest or a recorded human trust decision | **Private record only**; no expected hash is put in the public repository or schema 1.0 | The reference against which the local hash is compared |
+| Private expected-digest manifest | Reviewed outside this repository: for large files, any platform-exposed digest **plus** an independent confirmation (e.g. a second separately reviewed retrieval); for Git-tracked files, an independently established digest or a recorded human trust decision | **Private record only**; no expected hash is put in the public repository or schema 1.0 | The reference against which the local hash is compared |
 
 Missing, extra or mismatching files are STOP (D§5.2 step 14–15). Provenance schema 1.0 cannot mark a weight digest `verified`; that stays unchanged (D§10 G2).
 
@@ -168,9 +176,9 @@ Legend: **V** PRIMARY-VENDOR this PR; **S** SECONDARY/snippet (dossier); **U** U
 
 | Criterion | P1 Lambda H100 80 GB | P2 Runpod Secure Cloud | Notes |
 | --- | --- | --- | --- |
-| Exact GPU/VRAM | H100 PCIe 80 GB [S] | H100 80/94 GB, RTX PRO 6000 96 GB listed [V]; which SKU is offered per region **U** | 80 GB leaves ≈ 4 % headroom over the 720P upstream figure; 480P peak is **UNVERIFIED** |
-| Host RAM / vCPU | 225 GiB / 26 vCPU [S] | 94 GB (NVL row) [S]; docs list none [V: absent] | Offload RAM requirement **UNVERIFIED**; published spec ≠ fit |
-| Ephemeral scratch | 1 TiB SSD [S] | User-selected; maximum **U** [V: sizes adjustable] | Proposed ≥ 250 GiB (D§2.4) is an allowance, not a measurement |
+| Exact GPU/VRAM | H100 PCIe 80 GB [V, Ada: official pricing, scoped] | H100 80/94 GB, RTX PRO 6000 96 GB listed [V]; which SKU is offered per region **U** | 80 GB leaves ≈ 4 % headroom over the 720P upstream figure; 480P peak is **UNVERIFIED** |
+| Host RAM / vCPU | 225 GiB / 26 vCPU [V, Ada: official pricing] | 94 GB (NVL row) [S]; docs list none [V: absent] | Offload RAM requirement **UNVERIFIED**; published spec ≠ fit |
+| Ephemeral scratch | 1 TiB SSD [V, Ada: official pricing] | User-selected; maximum **U** [V: sizes adjustable] | Proposed ≥ 250 GiB (D§2.4) is an allowance, not a measurement |
 | Candidate region | **U** | **U** (EU regions mentioned) [V: GDPR page] | Gate 2/4 residency decision (H) |
 | Isolation | VM-style instance? **U** | Container, multi-tenant [V] | Container ≠ VM trust boundary; kernel shared with host |
 | Volumes: local vs network | Persistent FS is NFS ⇒ excluded; 1 TiB root disk locality **U** [S] | Container/volume disk "local" per docs [V]; network volumes excluded; whether `/workspace` is a host-local block device or an overlay/bind mount **U** | Attestation question (D§5.1 R3, human decision Q6) |
@@ -183,7 +191,7 @@ Legend: **V** PRIMARY-VENDOR this PR; **S** SECONDARY/snippet (dossier); **U** U
 | API termination | Console/API terminate [S]; in-guest poweroff does not stop billing [S] | CLI/API/console terminate [V]; in-guest timer pattern documented [V] | Independent external watchdog still required |
 | Deletion evidence | **U** | Terminate deletes volume disk [V]; provider-side logs/snapshots **U** | Deletion drill (§7) |
 | Quota / stock | **U** | Zero-GPU restart caveat documented for stopped Pods [V]; quota **U** | Dated quotation (H) |
-| Rate | $3.29/h list [S] | $3.19/h (NVL) list [S]; not in docs | **Not refreshed**; not a quote; currency, region, tax/VAT, promotions and quota can change it |
+| Rate | $3.29/GPU-h list + tax [V, Ada, retrieved 2026-11-04; docs table "as of December 2025"] | $3.19/h (NVL) list [S]; not in docs | Lambda refreshed per Ada, Runpod not; neither is a quote; currency, region, tax/VAT, promotions and quota can change it |
 
 **Data boundary (both).** Whether the guest filesystem is local to the Linux instance or container, a real-person portrait sent there is a transfer to, and hosting/processing by, the
 **cloud provider** (D§5.1 R13). Egress blocking does not change that. Container/VM guest semantics govern *who inside the guest* can read files; they say nothing about the provider's
@@ -217,9 +225,9 @@ compatibility claim is **UNVERIFIED on hardware** unless stated otherwise. The p
 
 | Component | PROPOSED | Source-checked fact (primary) | UNVERIFIED on hardware |
 | --- | --- | --- | --- |
-| Operating system | One current Ubuntu LTS release on `x86_64`, chosen once and recorded with its image/volume digest | None (not source-checked) | Driver and library packaging on the chosen provider image |
+| Operating system | PROPOSED: Ubuntu 22.04 LTS `x86_64` (Lambda's public image table lists 22.04 with default Python 3.10 and 24.04 with default Python 3.12; per Ada's review). Pin policy: record exact distro point release, architecture, kernel release and NVIDIA driver version, and the provider image identity/digest, freeze them before any build, and treat any change as a new specification | Lambda image table per Ada (not re-read by the author) | Driver and library packaging on the chosen provider image |
 | Kernel | Whatever the provider guest provides; **record** the release string and boot parameters before load | — | Whether a provider kernel matches the NVIDIA driver in use |
-| Python | **3.11** (FRP requires ≥ 3.11 in `pyproject.toml`; the upstream pin allows ≥ 3.10) | flash-attn `v2.8.3.post2` publishes `cp311` Linux `x86_64` wheel names (see below); the PyTorch matrix (`RELEASE.md` on `main` @ `4a442f4e2e07ee3ff6b0baf45e5ae435d9c62229`, 2026-11-04) lists Python ≥ 3.9 for torch 2.8 and ≥ 3.10 for 2.9–2.14 | Interpreter build and `-I -B` behaviour on the provider image |
+| Python | **3.11**, installed from an explicitly proposed and frozen source (neither Ubuntu 22.04 nor 24.04 defaults to 3.11 on the Lambda image table; the source, e.g. a pinned distribution package or a hashed build, is a human decision, not provisioned here) (FRP requires ≥ 3.11 in `pyproject.toml`; the upstream pin allows ≥ 3.10) | flash-attn `v2.8.3.post2` publishes `cp311` Linux `x86_64` wheel names (see below); the PyTorch matrix (`RELEASE.md` on `main` @ `4a442f4e2e07ee3ff6b0baf45e5ae435d9c62229`, 2026-11-04) lists Python ≥ 3.9 for torch 2.8 and ≥ 3.10 for 2.9–2.14 | Interpreter build and `-I -B` behaviour on the provider image |
 | torch / torchvision | **torch 2.8.x** (≥ 2.6 is FRP's weights-only requirement) with the matching `torchvision`, from CUDA 12.x wheels | The PyTorch release matrix lists CUDA 12.6 and 12.8 as stable for 2.8; the Wan pin requires only `torch>=2.4.0` | Whether the Wan pin runs correctly on torch 2.8, and whether the three `.pth` files load under weights-only unpickling (runbook §5; R10) |
 | CUDA runtime/toolkit | **12.6** (bundled with the torch wheel; no system toolkit install proposed) | Matrix above (12.6 is stable for torch 2.8–2.14) | Driver/runtime pairing, Hopper behaviour |
 | NVIDIA driver | The provider's installed driver; **record** version before load; do not upgrade in place | **Not source-checked** (NVIDIA pages unreachable): the minimum driver for the chosen CUDA is **UNVERIFIED** | Everything |
@@ -297,8 +305,8 @@ and supports no protection claim (D§6.3). The consenting-adult baseline (R1), d
 
 | # | Blocker | State | Blocks |
 | --- | --- | --- | --- |
-| B1 | Checkpoint model card, Hub inventory, LFS SHA-256 and Git blob ids not retrievable here | **Unresolved**; operator re-retrieval needed (§3.2) | Gates 1, 6 |
-| B2 | No dated quotation, no current vendor rate, host RAM, region, quota or Terms/AUP/DPA for either candidate | **Unresolved** | Gates 4, 5 |
+| B1 | Card and top-level tree read independently by Ada; complete recursive inventory, Xet/LFS/Git identifiers and expected digests still absent; licence not approved | **Partly narrowed; unresolved**; metadata-only re-retrieval and human review needed (§3.2) | Gates 1, 6 |
+| B2 | No dated quotation, region availability, quota, Terms/AUP/DPA, no-egress, storage locality or vendor-enforced spend cap/liability bound; Lambda list rate/specs now scoped PRIMARY-VENDOR (Ada), Runpod rate SECONDARY | **Unresolved** | Gates 4, 5 |
 | B3 | No vendor-verified **total** spend cap or post-stop liability bound in the evidence (Runpod: prepaid balance + $80/h rate limit; Lambda: none found) | **NO-GO** under D§8-2 until answered | Gate 5 |
 | B4 | No documented way to block and verify outbound traffic on either candidate | Unresolved (V5) | Gate 6, 7 |
 | B5 | Local-volume attestation definition; container (Runpod) versus VM guest | Human decision | Gates 3, 7 |
