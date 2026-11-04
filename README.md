@@ -136,6 +136,7 @@ The [roadmap](ROADMAP.md) records milestones, decision gates, and the evidence r
 - [docs/gpu-readiness.md](docs/gpu-readiness.md) — go/no-go gates, cost-quote template, weight acquisition and data-handling procedure (design; nothing approved).
 - [docs/gpu-go-no-go-dossier.md](docs/gpu-go-no-go-dossier.md) — planning-only dossier for the seven gates: unverified provider/cost evidence, PR 3C residual risks, a proposed smoke-run spec and no-go conditions (nothing approved).
 - [docs/gpu-evidence-delta.md](docs/gpu-evidence-delta.md) — planning-only evidence delta (PR 3E): evidence labels, what could and could not be verified, provider comparison matrix, proposed (untested) Linux environment spec and blockers.
+- [docs/gpu-provider-decision.md](docs/gpu-provider-decision.md) — planning-only conditional provider decision (PR 3F, [#24](https://github.com/FacialReplicationPrevention/FRP/pull/24), issue [#23](https://github.com/FacialReplicationPrevention/FRP/issues/23); planning only): non-binding ranking, disqualifiers, vendor questions and private handoff; overall NO-GO, nothing approved.
 - [docs/private-review-viewer.md](docs/private-review-viewer.md) — specification and implementation status of the local-only private review viewer (implemented for synthetic content only; no real media reviewed).
 - [docs/wan21-private-execution-runbook.md](docs/wan21-private-execution-runbook.md) — Wan 2.1 adapter contract map, pinned upstream call sites, loader-safety assessment and the gated procedure for a future approved smoke test (nothing approved or run).
 

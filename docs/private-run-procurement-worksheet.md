@@ -12,7 +12,10 @@ to it), [runbook](wan21-private-execution-runbook.md), and the machine-readable
 [readiness template](../readiness/wan21-i2v-baseline.yaml). The
 [GPU go/no-go dossier](gpu-go-no-go-dossier.md) (PR 3D, planning only) lists the public-source
 evidence, unverified provider questions, illustrative cost scenarios and per-gate private evidence
-needed to fill this worksheet; it fills nothing in and approves nothing.
+needed to fill this worksheet; it fills nothing in and approves nothing. The
+[provider decision](gpu-provider-decision.md) (PR 3F, planning only) adds a non-binding
+conditional ranking, disqualifiers, prioritised vendor questions and a private handoff order; it
+also fills nothing in and selects no provider.
 
 **Pinned targets (expected values only):** `Wan-Video/Wan2.1` @
 `9737cba9c1c3c4d04b33fcad41c111989865d315`; `Wan-AI/Wan2.1-I2V-14B-480P` @
