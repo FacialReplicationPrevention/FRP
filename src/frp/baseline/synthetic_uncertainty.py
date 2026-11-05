@@ -17,11 +17,15 @@ deterministic on one Python version.
 Limitations: the percentile bootstrap of a median with few identities is known to be unreliable and
 its coverage is **not** validated here. The only withheld cases are mechanical: fewer than two
 identity values (no resampling variation exists) and all-equal values (the interval would be a
-zero-width point that conveys false precision). Missing identities are never imputed. Two
+zero-width point that conveys false precision); a zero-width or non-finite *estimated* interval from
+varying inputs is withheld too. At least ``MIN_REPETITIONS`` repetitions are required (a
+computational floor, not a sample-size claim). Missing identities are never imputed. Two
 identities is not an endorsed sample size.
 
 :func:`aggregate_baseline` accepts any estimator only for simulated, non-smoke result sets, so this
-estimator cannot be attached to real or smoke data.
+estimator cannot be attached to real or smoke data **through that function**. The guard is specific
+to baseline aggregation: ``interval()`` cannot know where its inputs came from, and the separate
+A/B/C/D ``frp.aggregation.aggregate`` accepts any estimator without this gate.
 """
 
 from __future__ import annotations
@@ -38,11 +42,20 @@ NOT_AUTHORISED_NOTE: Final = (
 )
 
 
-def _check_number(name: str, value: object, *, integer: bool = False) -> None:
+# A computational floor so that tail quantiles rest on many resamples; not a sample-size claim.
+MIN_REPETITIONS: Final = 100
+
+
+def _check_number(name: str, value: object, *, integer: bool = False) -> float:
     if isinstance(value, bool) or not isinstance(value, int if integer else (int, float)):
         raise ValueError(f"{name} must be {'an integer' if integer else 'a number'}")
-    if not math.isfinite(value):
+    try:
+        number = float(value)
+    except OverflowError:
+        raise ValueError(f"{name} is not representable as a finite float") from None
+    if not math.isfinite(number):
         raise ValueError(f"{name} must be finite")
+    return number
 
 
 class SyntheticIdentityBootstrap:
@@ -54,8 +67,8 @@ class SyntheticIdentityBootstrap:
         _check_number("repetitions", repetitions, integer=True)
         if not 0.0 < level < 1.0:
             raise ValueError("level must be strictly between 0 and 1")
-        if repetitions < 1:
-            raise ValueError("repetitions must be >= 1")
+        if repetitions < MIN_REPETITIONS:
+            raise ValueError(f"repetitions must be >= {MIN_REPETITIONS}")
         self.seed, self.level, self.repetitions = seed, float(level), repetitions
 
     @property
@@ -66,31 +79,32 @@ class SyntheticIdentityBootstrap:
         )
 
     def interval(self, identity_values: Sequence[float]) -> Interval | None:
-        for value in identity_values:
-            _check_number("identity value", value)
-        values = [float(v) for v in identity_values]
+        values = [_check_number("identity value", v) for v in identity_values]
         if len(values) < 2 or min(values) == max(values):
             return None
         rng = random.Random(self.seed)  # noqa: S311 - reproducible, not security-sensitive
         n = len(values)
         medians = sorted(self._median(rng.choices(values, k=n)) for _ in range(self.repetitions))
         tail = (1.0 - self.level) / 2.0
-        return Interval(
-            lower=_quantile(medians, tail), upper=_quantile(medians, 1.0 - tail), level=self.level
-        )
+        lower, upper = _quantile(medians, tail), _quantile(medians, 1.0 - tail)
+        # A zero-width or non-finite estimate from varying inputs would convey false precision.
+        if not (math.isfinite(lower) and math.isfinite(upper)) or lower >= upper:
+            return None
+        return Interval(lower=lower, upper=upper, level=self.level)
 
     @staticmethod
     def _median(sample: list[float]) -> float:
         ordered = sorted(sample)
         mid = len(ordered) // 2
-        return ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2.0
+        return ordered[mid] if len(ordered) % 2 else ordered[mid - 1] / 2.0 + ordered[mid] / 2.0
 
 
 def _quantile(ordered: Sequence[float], q: float) -> float:
     position = (len(ordered) - 1) * q
     low = math.floor(position)
     high = min(low + 1, len(ordered) - 1)
-    return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
+    fraction = position - low
+    return ordered[low] * (1.0 - fraction) + ordered[high] * fraction
 
 
-__all__ = ["NOT_AUTHORISED_NOTE", "SyntheticIdentityBootstrap"]
+__all__ = ["MIN_REPETITIONS", "NOT_AUTHORISED_NOTE", "SyntheticIdentityBootstrap"]

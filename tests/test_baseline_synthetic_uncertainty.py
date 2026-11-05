@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -91,15 +92,15 @@ def run(plan: BaselinePlan, raw: BaselineResultSet, patterns: dict[int, Pattern]
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"seed": True, "level": 0.9, "repetitions": 10},
-        {"seed": 1.5, "level": 0.9, "repetitions": 10},
-        {"seed": 1, "level": True, "repetitions": 10},
-        {"seed": 1, "level": 0.0, "repetitions": 10},
-        {"seed": 1, "level": 1.0, "repetitions": 10},
-        {"seed": 1, "level": float("nan"), "repetitions": 10},
-        {"seed": 1, "level": 0.9, "repetitions": 0},
+        {"seed": True, "level": 0.9, "repetitions": 100},
+        {"seed": 1.5, "level": 0.9, "repetitions": 100},
+        {"seed": 1, "level": True, "repetitions": 100},
+        {"seed": 1, "level": 0.0, "repetitions": 100},
+        {"seed": 1, "level": 1.0, "repetitions": 100},
+        {"seed": 1, "level": float("nan"), "repetitions": 100},
+        {"seed": 1, "level": 0.9, "repetitions": 99},
         {"seed": 1, "level": 0.9, "repetitions": True},
-        {"seed": 1, "level": 0.9, "repetitions": 10.0},
+        {"seed": 1, "level": 0.9, "repetitions": 100.0},
     ],
 )
 def test_estimator_requires_valid_explicit_parameters(kwargs: dict[str, Any]) -> None:
@@ -109,10 +110,10 @@ def test_estimator_requires_valid_explicit_parameters(kwargs: dict[str, Any]) ->
         SyntheticIdentityBootstrap(seed=1, level=0.9)  # type: ignore[call-arg]
 
 
-@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "0.5", None])
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), 10**400, "0.5", None])
 def test_estimator_rejects_non_finite_or_non_numeric_observations(bad: Any) -> None:
     with pytest.raises(ValueError, match="identity value"):
-        SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=50).interval([0.2, bad, 0.4])
+        SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=100).interval([0.2, bad, 0.4])
 
 
 @pytest.mark.parametrize("values", [[], [0.5], [0.5, 0.5], [0.3, 0.3, 0.3]])
@@ -201,7 +202,7 @@ def test_zero_one_or_degenerate_identities_get_no_interval(
 def test_estimator_is_refused_for_non_simulated_and_smoke_results(
     plan: BaselinePlan, raw: BaselineResultSet
 ) -> None:
-    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=50)
+    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=100)
     for update, match in (
         ({"simulated": False}, "non-simulated"),
         ({"run_role": "smoke"}, "smoke"),
@@ -227,7 +228,7 @@ def test_no_executed_runs_is_accounted_for_without_values(plan: BaselinePlan) ->
             ),
         }
     )
-    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=50)
+    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=100)
     summary = aggregate_baseline(
         empty, plan, min_valid_later_frames=1, attempt_selection="last_attempt", uncertainty=est
     )
@@ -273,7 +274,7 @@ def test_isolated_first_frame_success_gives_no_later_similarity(
         ("valid", "absent", "absent", "absent", "absent"),
         (0.95, None, None, None, None),
     )
-    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=50)
+    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=100)
     summary = run(plan, raw, {1: isolated, 2: isolated, 4: isolated}, uncertainty=est)
     assert summary.identities_with_later_similarity == 0
     assert summary.median_later_frame_similarity is None
@@ -302,3 +303,18 @@ def test_quality_stays_separate_and_demo_pipeline_is_labelled_simulated(
     assert summary.claim_scope == evaluated.claim_scope
     assert not hasattr(summary, "combined_score")
     assert "approved" not in summary.uncertainty_method.replace("unapproved", "")  # type: ignore[union-attr]
+
+
+def test_one_repetition_is_rejected_and_degenerate_resamples_are_withheld() -> None:
+    with pytest.raises(ValueError, match="repetitions"):
+        SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=1)
+    # Varying values whose resampled medians are all identical give no interval.
+    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=100)
+    assert est.interval([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.9]) is None
+
+
+def test_extreme_finite_values_never_yield_non_finite_endpoints() -> None:
+    big = 1.7e308
+    est = SyntheticIdentityBootstrap(seed=1, level=0.9, repetitions=200)
+    result = est.interval([-big, big])
+    assert result is None or (math.isfinite(result.lower) and math.isfinite(result.upper))
