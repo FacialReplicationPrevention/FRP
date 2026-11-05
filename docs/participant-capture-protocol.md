@@ -25,6 +25,7 @@ Upstream Wan 2.1 documents no portrait-framing requirement that FRP has verified
 - **Reference photo** = the single image given to Wan on both the CLIP and VAE routes (`image_count_per_identity: 1`, original on both routes, `use_prompt_extend: false`).
 - **Calibration photos** = separate captures of the same person, never the reference photo, used only as genuine-comparison material. They are captured and stored separately and are not selected by looking at generated output.
 - **Calibration and evaluation identities must be disjoint**, as the manifest already enforces per run set (`frp.baseline.manifest`) and the draft plan check enforces across lists (`frp.baseline.analysis_plan`).
+- **Identity separation is verified privately.** Distinct pseudonyms are not proof of distinct people: before calibration or evaluation an approved private data steward must verify, against the restricted participant-to-pseudonym mapping, that no person appears in both splits. A passing synthetic schema check (`frp.baseline.analysis_plan`) cannot establish identity-disjointness in a real dataset, and the mapping is never stored in this repository.
 - **One willing participant supports only the technical smoke role, or an explicitly exploratory demonstration.** One person cannot supply identity-disjoint calibration and evaluation populations, impostors, or population-level uncertainty. A single participant never yields a calibrated, population-level baseline.
 
 ## 2. Participant eligibility (summary; the full process is in the [lifecycle](participant-data-lifecycle.md))

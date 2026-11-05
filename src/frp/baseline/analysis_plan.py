@@ -130,15 +130,23 @@ class AnalysisPlanDraft(BaseModel):
                 "genuine/impostor calibration needs at least two distinct calibration identities"
             )
 
-        if (
-            self.frame_indices is not None
-            and self.frame_count is not None
-            and self.frame_indices[-1] >= self.frame_count
-        ):
-            problems.append("frame_indices must be < frame_count")
-        if self.min_valid_later_frames is not None and self.frame_indices is not None:
-            later = sum(1 for index in self.frame_indices if index != 0)
-            if self.min_valid_later_frames > later:
+        if self.frame_indices is not None:
+            # A proposed selection must be checkable, so its prerequisites cannot be unset.
+            if self.frame_count is None:
+                problems.append("a proposed frame_indices needs a known frame_count")
+            elif self.frame_indices[-1] >= self.frame_count:
+                problems.append("frame_indices must be < frame_count")
+            if self.frame_indices[0] != 0 or len(self.frame_indices) < 2:
+                problems.append(
+                    "a proposed frame_indices must include frame 0 (reported separately) "
+                    "and at least one later frame"
+                )
+        if self.min_valid_later_frames is not None:
+            if self.frame_indices is None:
+                problems.append("a proposed min_valid_later_frames needs proposed frame_indices")
+            elif self.min_valid_later_frames > (
+                later := sum(1 for index in self.frame_indices if index != 0)
+            ):
                 problems.append(
                     f"min_valid_later_frames exceeds the {later} later (index != 0) sampled frames"
                 )

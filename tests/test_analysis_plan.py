@@ -117,7 +117,7 @@ def test_minimum_later_frames_must_be_possible() -> None:
     assert "exceeds the 4 later" in _problems(too_many)
     assert "greater than or equal to 1" in _problems({**ok, "min_valid_later_frames": 0})
     only_zero = {**ok, "frame_indices": [0], "min_valid_later_frames": 1}
-    assert "exceeds the 0 later" in _problems(only_zero)
+    assert "at least one later frame" in _problems(only_zero)
 
 
 @pytest.mark.parametrize("value", ["best_attempt", "highest_similarity", "mean", ""])
@@ -171,3 +171,35 @@ def test_module_imports_no_model_or_network_libraries() -> None:
     source = (Path(__file__).resolve().parents[1] / "src/frp/baseline/analysis_plan.py").read_text()
     for forbidden in ("torch", "cv2", "insightface", "requests", "urllib", "socket", "subprocess"):
         assert f"import {forbidden}" not in source
+
+
+def test_proposed_frame_indices_need_known_frame_count() -> None:
+    assert "needs a known frame_count" in _problems(_with(frame_count=None))
+    assert "needs a known frame_count" in _problems(
+        _with(frame_count=None, frame_indices=[0, 999999])
+    )
+    pending = _with(
+        frame_count=None,
+        frame_indices=None,
+        decision_states={
+            "frame_indices": "pending",
+            "min_valid_later_frames": "pending",
+            "attempt_selection": "proposed",
+        },
+    )
+    assert parse_analysis_plan(pending).frame_indices is None
+
+
+def test_proposed_minimum_needs_proposed_frame_indices() -> None:
+    states = {
+        "frame_indices": "pending",
+        "min_valid_later_frames": "proposed",
+        "attempt_selection": "proposed",
+    }
+    message = _problems(_with(frame_indices=None, min_valid_later_frames=3, decision_states=states))
+    assert "needs proposed frame_indices" in message
+
+
+@pytest.mark.parametrize("indices", [[0], [20, 40], [20]])
+def test_proposed_selection_needs_frame_zero_and_a_later_frame(indices: list[int]) -> None:
+    assert "frame 0" in _problems(_with(frame_indices=indices))

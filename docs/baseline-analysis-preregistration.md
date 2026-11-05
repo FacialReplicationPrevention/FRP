@@ -38,6 +38,7 @@ Legend: **Enforced** = checked by existing code; **Proposed** = candidate to fre
 | D16 | Video utility: automated metrics + blinded human rubric | **Review** | Rubric `frp-blinded-quality-rubric-0.1-draft` is unvalidated | Viewer records ratings (synthetic only) |
 | D17 | Failure reporting and disclosure safeguards | Proposed | See §7 | Partly (all attempts kept; no public real-data reports) |
 | D18 | Draft plan status and review state | Enforced | `status` is only `draft`; per-decision `pending`/`proposed`; no reviewed/frozen/approved value exists | `frp.baseline.analysis_plan` |
+| D19 | Distinct pseudonyms are not proof of distinct people | **Review** | A private data steward must verify calibration/evaluation separation against the restricted participant-to-pseudonym mapping before calibration or evaluation. The draft check compares pseudonym strings only and **cannot** establish identity-disjointness in a real dataset. The mapping is never added to this repository | Not enforceable in public code |
 
 ## 3. Denominators and statuses
 
@@ -81,7 +82,7 @@ Report all attempts, failures, missingness and negative results; subgroup and de
 
 ## 9. Check available now
 
-`frp.baseline.analysis_plan.parse_analysis_plan` / `load_analysis_plan` validate a synthetic **draft** plan record (example: [`examples/analysis-plans/synthetic-draft-analysis-plan.yaml`](../examples/analysis-plans/synthetic-draft-analysis-plan.yaml)) for role/split consistency, duplicate or overlapping pseudonyms, frame bounds, an impossible minimum-later-frames rule, unsupported attempt-selection values, placeholders presented as proposed settings, and false approved states. Errors withhold input values and pseudonyms. It consumes no media and calls no model; it is a consistency check, not an approval.
+`frp.baseline.analysis_plan.parse_analysis_plan` / `load_analysis_plan` validate a synthetic **draft** plan record (example: [`examples/analysis-plans/synthetic-draft-analysis-plan.yaml`](../examples/analysis-plans/synthetic-draft-analysis-plan.yaml)) for role/split consistency, duplicate or overlapping pseudonyms, frame bounds (a proposed selection needs a known `frame_count`, frame 0 and at least one later frame), an impossible minimum-later-frames rule (a proposed minimum needs proposed `frame_indices`), unsupported attempt-selection values, placeholders presented as proposed settings, and false approved states. Errors withhold input values and pseudonyms. A validated plan does not show that calibration was performed or accepted, and `calibration_claim: calibrated` states an intended draft configuration only. It consumes no media and calls no model; it is a consistency check, not an approval.
 
 ## 10. Limitations
 
