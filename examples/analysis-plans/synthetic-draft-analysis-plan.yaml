@@ -1,0 +1,27 @@
+# SYNTHETIC EXAMPLE - exercises the draft analysis-plan consistency check only
+# (analysis-plan-0.1-draft). Not a preregistration and not an approval.
+#
+# - Pseudonyms (SYN-*) are synthetic and refer to no real person.
+# - Every decision value below is a CANDIDATE ("proposed") for review, not a reviewed or frozen
+#   setting; leave a decision null with state "pending" when it cannot be justified yet.
+# - status can only be "draft". Freezing is a separate private, human-signed procedure.
+schema_version: analysis-plan-0.1-draft
+protocol: wan2.1-i2v-baseline
+plan_id: FRP-ANALYSIS-PLAN-SYNTHETIC-EXAMPLE
+plan_version: synthetic-draft-0
+status: draft
+claim_role: baseline
+calibration_claim: calibrated
+
+calibration_identities: [SYN-201, SYN-202, SYN-203]
+evaluation_identities: [SYN-101, SYN-102, SYN-103]
+
+frame_count: 81
+frame_indices: [0, 20, 40, 60, 80]
+min_valid_later_frames: null
+attempt_selection: first_attempt
+missing_similarity_policy: no_imputation_report_coverage
+decision_states:
+  frame_indices: proposed
+  min_valid_later_frames: pending
+  attempt_selection: proposed
