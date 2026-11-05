@@ -582,7 +582,22 @@ the A/B/C/D `frp.aggregation.aggregate`, which is unchanged. It returns a `Basel
 - **No invented choices**: `min_valid_later_frames` and `attempt_selection` (`first_attempt` or
   `last_attempt`) must be passed explicitly and are recorded, because Experiment 003 decisions 2
   and 4 are open. No threshold, calibration, interval or test is computed
-  (`calibration_status: uncalibrated`); the `UncertaintyEstimator` hook is optional and none ships.
+  (`calibration_status: uncalibrated`); the `UncertaintyEstimator` hook is optional.
+
+**Synthetic uncertainty prototype (PR 3H) — implemented behaviour versus unapproved decisions.**
+`frp.baseline.synthetic_uncertainty.SyntheticIdentityBootstrap(seed=, level=, repetitions=)` is an
+explicit, opt-in demonstration. It resamples **identities** (one median value per identity) with
+replacement, takes the median of each resample and reports the percentile interval (linear
+interpolation) of those medians; clips and frames are never resampled. It returns `None` (no
+interval, never imputed) for fewer than two identity values or all-equal values, and rejects bool
+and non-finite values. `aggregate_baseline` raises if an estimator is supplied for a
+non-simulated result set or a `smoke` run, so baseline aggregation cannot produce an interval for real data (the guard is specific to
+`aggregate_baseline`; `interval()` cannot know its inputs' origin and the A/B/C/D `aggregate` is
+ungated and unchanged). At least 100 repetitions are required (a computational floor, not a
+sample-size claim), and a zero-width or non-finite estimated interval is withheld. Not
+decided and not settled by any unit test: D14 (minimum identity count), D15 (method), interval
+coverage, sample size and recogniser thresholds. Its intervals are simulated demonstration output,
+not findings, and are no match decision, confidence statement or protection claim.
 
 ### Private review store
 

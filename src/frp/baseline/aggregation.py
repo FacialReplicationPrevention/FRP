@@ -24,7 +24,9 @@ this module reports **descriptive** quantities only:
 
 No calibration, threshold, interval or test is computed. Similarities are **uncalibrated**
 evaluator outputs, not match decisions, and say nothing about consent or protection. The optional
-:class:`~frp.aggregation.UncertaintyEstimator` is an extension point; none is implemented.
+:class:`~frp.aggregation.UncertaintyEstimator` is accepted **only for simulated, non-smoke** result
+sets; the sole estimator shipped is the synthetic demonstration in
+:mod:`frp.baseline.synthetic_uncertainty` (decisions D14/D15 remain pending).
 """
 
 from __future__ import annotations
@@ -295,6 +297,14 @@ def aggregate_baseline(
         raise ValueError("min_valid_later_frames must be an integer >= 1")
     if attempt_selection not in ATTEMPT_SELECTIONS:
         raise ValueError("attempt_selection must be first_attempt or last_attempt")
+    if uncertainty is not None:
+        if not results.simulated:
+            raise ValueError(
+                "uncertainty estimators are not scientifically authorised for non-simulated "
+                "results (D14/D15 pending review)"
+            )
+        if results.run_role == "smoke":
+            raise ValueError("a smoke run supports no uncertainty interval")
     verify_baseline_results_against_plan(results, plan)
 
     attempts = tuple(
