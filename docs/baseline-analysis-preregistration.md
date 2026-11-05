@@ -33,8 +33,8 @@ Legend: **Enforced** = checked by existing code; **Proposed** = candidate to fre
 | D11 | Face evaluator and second evaluator | **Review** | Feasibility, licence and recogniser-specific effects open (Exp. 003 decision 3) | Not enforced |
 | D12 | Genuine/impostor calibration on independent adults | Proposed | See §5 | Not enforced; no calibration code exists |
 | D13 | Operating thresholds | **Pending** | Fixed on calibration identities only; **no universal cutoff** | — |
-| D14 | Minimum identities for calibration and for an identity-clustered interval | **Pending** | Not defensible before pilot evidence (Exp. 003 decision 2) | — |
-| D15 | Uncertainty method | **Review** | Identity-clustered; method and few-identity limits in §6 | Not implemented (`UncertaintyEstimator` is an extension point only) |
+| D14 | Minimum identities for calibration and for an identity-clustered interval | **Pending** | Not defensible before pilot evidence (Exp. 003 decision 2) | Mechanical only: the synthetic prototype withholds an interval below two identity values; this is not a minimum sample size |
+| D15 | Uncertainty method | **Review** | Identity-clustered; method and few-identity limits in §6 | Only a synthetic, opt-in demonstration (`frp.baseline.synthetic_uncertainty`), refused for non-simulated and smoke results; the method is **not** chosen or approved |
 | D16 | Video utility: automated metrics + blinded human rubric | **Review** | Rubric `frp-blinded-quality-rubric-0.1-draft` is unvalidated | Viewer records ratings (synthetic only) |
 | D17 | Failure reporting and disclosure safeguards | Proposed | See §7 | Partly (all attempts kept; no public real-data reports) |
 | D18 | Draft plan status and review state | Enforced | `status` is only `draft`; per-decision `pending`/`proposed`; no reviewed/frozen/approved value exists | `frp.baseline.analysis_plan` |
