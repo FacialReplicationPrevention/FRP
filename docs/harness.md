@@ -599,6 +599,8 @@ decided and not settled by any unit test: D14 (minimum identity count), D15 (met
 coverage, sample size and recogniser thresholds. Its intervals are simulated demonstration output,
 not findings, and are no match decision, confidence statement or protection claim.
 
+**Face-evaluation and calibration readiness (PR 3I) — documentation and tests only.** PR 3H ([#28](https://github.com/FacialReplicationPrevention/FRP/pull/28)) is merged. [face-evaluation-readiness.md](face-evaluation-readiness.md) compares candidate detector/recogniser pipelines (not approved), proposes how a future private `FaceIdentityEvaluator` would map onto `FrameEvaluation`/`FaceEvaluatorInfo` unchanged, and sets out a calibration method and decision register. No calibration code exists in `frp`: `tests/test_face_calibration_readiness.py` holds a test-local FMR/FNMR illustration on fabricated scores (SIMULATED / METHOD TEST ONLY, no inferential meaning), and `aggregate_baseline` still reports `calibration_status: uncalibrated` and takes no threshold. D11–D16 and D19 remain unsettled.
+
 ### Private review store
 
 A review store is a directory in **approved private storage** (never in a repository; `.gitignore`
