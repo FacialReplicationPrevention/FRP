@@ -1,31 +1,30 @@
 # Conditional GPU provider decision and procurement handoff (Milestone 004, PR 3F)
 
 **Status: PLANNING ONLY. NO GPU / NO WEIGHTS / NO REAL MEDIA / NO INFERENCE / NO SPEND. ALL SEVEN HUMAN GATES PENDING. NOTHING AUTHORISED.**
-No account, vendor contact, quote request, rental, download, hash, image or run exists. A ranking is not a vendor selection, a list rate is not a quote, and a merged PR approves
-nothing. `readiness/wan21-i2v-baseline.yaml` (all gates `pending`) and `provenance/model-candidates.yaml` (`not_ready`) are unchanged, as are the pins
+No new account, vendor contact, quote request, rental, download, hash, image or run was made for this update. Earlier provider enquiries are summarized only as operator-reported evidence in §2.3; their correspondence remains private. A ranking is not a vendor selection, a list rate is not a quote, and a merged PR approves nothing. `readiness/wan21-i2v-baseline.yaml` (all gates `pending`) and `provenance/model-candidates.yaml` (`not_ready`) are unchanged, as are the pins
 (`Wan-Video/Wan2.1` @ `9737cba9c1c3c4d04b33fcad41c111989865d315`; `Wan-AI/Wan2.1-I2V-14B-480P` @ `6b73f84e66371cdfe870c72acd6826e1d61cf279`), `use_prompt_extend: false` and the
-original CLIP/VAE/CFG controls. Issue [#23](https://github.com/FacialReplicationPrevention/FRP/issues/23); parent [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) stays open,
+original CLIP/VAE/CFG controls. Updated for issue [#31](https://github.com/FacialReplicationPrevention/FRP/issues/31) on 2026-11-20; the prior conditional ranking is withdrawn (§2.3). Issue [#23](https://github.com/FacialReplicationPrevention/FRP/issues/23); parent [#9](https://github.com/FacialReplicationPrevention/FRP/issues/9) stays open,
 [#14](https://github.com/FacialReplicationPrevention/FRP/issues/14) stays blocked. This file links, and does not reproduce, the [3D dossier](gpu-go-no-go-dossier.md) (`D§n`) and the
-[3E evidence delta](gpu-evidence-delta.md) (`E1–E12`, `V1–V9`, `B1–B8`). Gate order and stop rules in [gpu-readiness.md](gpu-readiness.md) take precedence.
+[3E evidence delta](gpu-evidence-delta.md) (`E1–E12`, `V1–V9`, `B1–B8`), and the [private procurement and gate worksheet](private-run-procurement-worksheet.md) for the all-in quote and private handoff. Gate order and stop rules in [gpu-readiness.md](gpu-readiness.md) take precedence.
 
 ## 1. Decision / status
 
 | Question | Provisional answer |
 | --- | --- |
-| Overall | **NO-GO to procure or run.** Every decision-critical control below is unverified for both providers. |
-| Which provider is investigated first? | **Lambda On-Demand, 1× H100 PCIe 80 GB — conditional preference for further procurement verification only.** |
-| Fallback | **Runpod Secure Cloud, H100-class (NVL 94 GB listed) — conditional fallback.** Community Cloud stays excluded for any identifiable data (D§8-6). |
+| Overall | **NO-GO to procure or run.** Operator-reported failures and unresolved mandatory controls remain; no provider advances. |
+| Candidate / fallback | **None.** The previous Lambda-first / Runpod-fallback ranking is withdrawn; neither advances. |
+| New alternatives | LeaderGPU and GPUServerHub were considered for this evidence delta, but their official pages were not retrievable here; their required properties remain unknown (§2.3). |
 | If neither can clear §4 | **NO PROVIDER.** The next action is to stop and escalate, not to design a workaround. |
 | Who selects | The budget approver, legal/procurement reviewer and data-protection owner, in private records, gate by gate. Nothing here selects. |
 
-**Why Lambda first (verified or scoped evidence only).** (a) A published host spec of 225 GiB RAM / 1 TiB SSD (L1) versus no host RAM or scratch limit in Runpod's documentation (R2);
+**Historical rationale for the withdrawn 2026-11-04 ranking (preserved, not current).** (a) A published host spec of 225 GiB RAM / 1 TiB SSD (L1) versus no host RAM or scratch limit in Runpod's documentation (R2);
 this matters because loading ≈ 82 GB of checkpoint files with offload needs large host RAM and scratch (D§2.4; the real need is unmeasured). (b) Lambda's docs are described as covering
 VM instances (L2), whereas Runpod's docs state each Pod is a multi-tenant *container* (R3); a dedicated-VM boundary is *unconfirmed* for Lambda but a container boundary is *stated* for Runpod.
 **Against Lambda:** 80 GB leaves ≈ 4 % headroom (80 − 76.7 = 3.3 GB) over the *720P* upstream peak, versus ≈ 23 % for 94 GB (94 − 76.7 = 17.3 GB). That arithmetic assumes equal units and a 480P peak equal to
 720P; neither 480P need nor sufficiency of 80 or 94 GB is measured, and VRAM can only be measured at gate 7, i.e. after spend. An out-of-memory result on 80 GB is therefore a plausible, recorded
 smoke failure (D§6.2), and moving to a larger SKU needs a fresh quote and approval. **For Runpod:** a documented prepaid-balance mechanism (R1) is the nearest thing to a spend ceiling in either
 evidence set, but it is a rate limit plus balance, not a verified total/liability cap. **The ranking is fragile**: it rests on a published spec and an unconfirmed isolation inference, and it
-reverses on the triggers in §4.
+reversed on the operator-reported findings in §2.3. This rationale and the supporting evidence rows remain historical; they are not a recommendation to resume either provider.
 
 ## 2. Evidence table
 
@@ -76,6 +75,37 @@ Label: **PRIMARY-VENDOR, REVIEWER-ATTRIBUTED**. Text only; no account, console, 
 Effect: L1, L2 and the billing-granularity, termination and in-guest-poweroff parts of L3 are now scoped primary reviewer-attributed evidence; "no egress fee" and NFS-filesystem details in L3 stay as before. L4 is unchanged (still UNVERIFIED).
 This is **not** a quote, cap, GPU fit, dedicated-host guarantee, outbound-deny, accepted term or approval, and no hard-blocker row in §4 is cleared by it.
 
+### 2.3 Fixed-duration and isolation feasibility delta (2026-11-20; issue #31)
+
+**Evidence labels:** `OPERATOR-REPORTED` means issue #31 reports an outcome of prior provider enquiries; the underlying correspondence is private, not in this repository, and was not independently inspected for this update. `RETRIEVAL-FAILED` means the official page could not be retrieved here. Search-result snippets and marketing claims were not treated as evidence. No new vendor contact or account action was made.
+
+| Candidate | Operator-reported procurement evidence | Public primary-source retrieval | Decision |
+| --- | --- | --- | --- |
+| Runpod | **FAIL (operator-reported):** could not provide the required hard total spend bound, complete outbound isolation, or separately scoped emergency termination. | Prior primary-vendor read: [`runpod/docs` at `93f2147`](https://github.com/runpod/docs/tree/93f2147761903839f4a2b3e595117f4f20fd9a89), retrieved 2026-11-04, documentation text only ([3E §4](gpu-evidence-delta.md#4-provider-evidence-refresh)). It does not establish the reported controls; not re-read on 2026-11-20. | **NO-GO.** Prior conditional fallback withdrawn. |
+| Lambda | **FAIL (operator-reported):** confirmed no automated hard spending cap. Other required assurances remain unresolved; this is not evidence that they were denied. | Prior reviewer-attributed official reads on 2026-11-04, not re-read for this update: [instances](https://lambda.ai/instances), [billing](https://docs.lambda.com/public-cloud/billing/), and [instance management](https://docs.lambda.com/public-cloud/on-demand/creating-managing-instances/) ([3F §2.2](#22-reviewer-attributed-primary-source-delta-ada-2026-11-04-pr-24-review-not-retrieved-by-the-author)). They do not establish an automated cap, deny-all networking, or restricted termination scope. | **NO-GO.** Prior conditional preference withdrawn. |
+| LeaderGPU | No response evidence for this candidate was provided in issue #31 or available for this update. | `https://www.leadergpu.com/server_configurations/118` and `https://www.leadergpu.com/landing/8xh100.html` were attempted on 2026-11-20. `curl`/web retrieval failed at DNS resolution; browser navigation was blocked. Search snippets were excluded. | **UNKNOWN / not advanced.** Exact SKU and all mandatory controls remain unverified. |
+| GPUServerHub | No response evidence for this candidate was provided in issue #31 or available for this update. | `https://gpuserverhub.com/` was attempted on 2026-11-20; `curl` and web retrieval failed at DNS resolution. Search snippets were excluded. | **UNKNOWN / not advanced.** Exact SKU and all mandatory controls remain unverified. |
+
+#### Candidate control matrix
+
+`PASS` is reserved for a documented candidate property, not general marketing. Operator-reported failures are labelled explicitly; inability to retrieve a source is `UNKNOWN`, not a finding that a provider lacks a feature.
+
+| Required control | Runpod | Lambda | LeaderGPU | GPUServerHub |
+| --- | --- | --- | --- | --- |
+| Hard provider-enforced total spend cap, independent of guest software and including fees/storage | **FAIL — operator reports required cap unavailable** | **FAIL — operator reports no automated hard cap** | UNKNOWN | UNKNOWN |
+| Contractual bound on total liability, including post-stop charges and billing lag | UNKNOWN — correspondence/terms not inspected | UNKNOWN — correspondence/terms not inspected | UNKNOWN | UNKNOWN |
+| Provider-enforced deny-all outbound during load/inference (IPv4/IPv6, DNS, all interfaces, metadata/service routes) | **FAIL — operator reports required isolation unavailable** | UNKNOWN | UNKNOWN | UNKNOWN |
+| Separately scoped, documented and testable provider-side emergency termination, independent of guest software | **FAIL — operator reports required restricted termination unavailable** | UNKNOWN | UNKNOWN | UNKNOWN |
+| Exact SKU, VRAM, host RAM, NVMe, driver/access constraints, region and Wan compatibility | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| Rental term, renewal/expiry, billing granularity, VAT, storage/egress/snapshot/termination charges | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| Terms, tenancy, DPA/residency, support access, encryption, retention and verifiable deletion | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+
+The comparison target remains **one H100 PCIe 80 GB** for the pinned Wan 2.1 I2V-14B-480P baseline. No 94/96 GB GPU or alternate architecture is treated as equivalent: compatibility and workload fit have not been verified. No exact SKU, price, hardware specification, term or provider assurance is asserted for LeaderGPU or GPUServerHub.
+
+**Glitch Servers and Scaleway.** Issue #31 identifies fixed-month Glitch Servers and Scaleway as possible later alternatives. Their official pages (`https://glitchservers.com/gpu-dedicated-server-uk` and `https://www.scaleway.com/en/dedibox/gpu/`) were attempted on 2026-11-20 but could not be retrieved because DNS resolution failed. They are **not assessed or advanced** here: a later, separate primary-source review would be needed to establish an exact compatible SKU, bounded total liability, independent termination, deny-all network controls, storage/deletion properties and current contractual terms. No provider suitability claim follows from this retrieval failure.
+
+**Decision:** No candidate advances while a mandatory control is failed or unknown. The conditional Lambda/Runpod ranking is withdrawn; overall status remains **NO-GO / NO PROVIDER**. This changes neither the seven human gates nor the pinned model, baseline controls, private evidence requirements or Milestone 005 block.
+
 ## 3. Distinctions this decision depends on
 
 | Never equate | With |
@@ -101,22 +131,20 @@ Missing critical evidence is **NO-GO**, never "probably acceptable". Each row mu
 
 | Control | Lambda: today / disqualifier / minimum to clear | Runpod: today / disqualifier / minimum to clear |
 | --- | --- | --- |
-| **Total billable cap + written limit on late/post-stop charges** | No mechanism found (L4). *Disqualify:* none offered, or a limit that is only alerts or in-guest. *Clear:* written vendor confirmation of an independently enforced cap, behaviour and delay at the limit, and a written bound on post-stop liabilities | Prepaid balance + $80/h rate limit (R1); destructive at $0; auto-pay, 5-min lag and other products drawing on the balance are open. *Disqualify:* no written bound on lag overshoot, stopped-volume and network-volume accrual, or if the funding workaround is the only control. *Clear:* written answer to P0-1 and a tested ceiling |
-| **Provider-API kill independent of the guest; zero-data drill first** | Console/API terminate and in-guest poweroff not stopping billing (L3; reviewer-attributed, §2.2). *Disqualify:* drill not rehearsed, or only the guest can stop. *Clear:* off-instance terminate from a separate machine/credential on a trivial zero-data instance, then listings showing nothing remains | CLI/REST/console terminate (R5); the in-guest timer pattern is **not** this control. *Disqualify:* no terminate-only or separately held credential, or a billing-capable key in the guest. *Clear:* credential scope and custody (P0-2), plus the drill |
-| **Verified outbound-deny after download** | Unknown (L4). *Disqualify:* cannot block and verify at the network layer. *Clear:* provider configuration record and an in-guest sacrificial attempt (3E §7) | No setting found (R6; absence ≠ proof). *Disqualify:* as for Lambda. *Clear:* same, plus ffmpeg and any provider telemetry covered |
+| **Total spend cap + written bound on late/post-stop charges** | No automated hard cap (operator-reported, §2.3); contractual liability bound remains unknown. *Disqualify:* no independent cap or bound. *Clear:* written vendor confirmation and a bounded zero-data test | Required cap unavailable (operator-reported, §2.3); historical prepaid/rate-limit evidence (R1) is not a cap. *Disqualify:* no independently enforced cap and bound. *Clear:* written answer and a separately approved, tested ceiling |
+| **Provider-API kill independent of the guest; zero-data drill first** | Console/API termination is documented in prior evidence (L3; §2.2); restricted credential scope and successful drill remain unknown. *Disqualify:* no separately held credential or only guest-controlled termination. *Clear:* off-instance termination on a trivial zero-data instance, then listings showing nothing remains | Required restricted emergency termination unavailable (operator-reported, §2.3); historical CLI/REST/console termination (R5) alone does not clear scope or kill requirements. *Disqualify:* no independent, restricted kill. *Clear:* separately approved proof and drill |
+| **Verified outbound-deny after download** | Unknown (L4; other assurances unresolved per §2.3). *Disqualify:* cannot block and verify at the network layer. *Clear:* provider configuration record and an in-guest sacrificial attempt (3E §7) | Required complete isolation unavailable (operator-reported, §2.3); historical docs did not identify a control (R6). *Disqualify:* as for Lambda. *Clear:* independently verified network-layer deny, including ffmpeg and provider telemetry |
 | **Local attested Linux block storage; no NFS/network/overlay** | Persistent filesystems are NFS ⇒ excluded; 1 TiB root-disk locality unknown. *Disqualify:* cannot attest the root/checkpoint volume | Network and global volumes excluded; volume-disk backing unknown (R4). *Disqualify:* cannot show host-local block storage rather than bind mount/overlay; provider data migration without control |
 | **Terms/AUP/DPA/privacy/region** | Unread. *Disqualify:* terms bar face media/likeness, no DPA for a later adult-face dataset, or no acceptable region. *Clear:* qualified legal reading (gate 4) | Unread; GDPR text only (R3). *Disqualify:* as for Lambda; Community Cloud for any identifiable data |
 | **Dated quote + confirmed quota** | Only a list rate (L1). *Disqualify:* no quota or stock for the exact SKU/region | No GPU rate in docs; secondary only. *Disqualify:* same |
 | **Isolation / hardware fit** | VM boundary unconfirmed; 80 GB headroom ≈ 4 % over the 720P figure (U1). *Disqualify:* shared or non-dedicated GPU; or the owner rejects the 80 GB OOM risk | Container only (R3). *Disqualify:* owner or data-protection owner rejects container isolation; 94 GB does not remove the unmeasured-fit risk |
 | **Owner-approved risk acceptance** | HUMAN-PENDING | HUMAN-PENDING |
 
-**Ranking reversal.** Lambda → fallback if it cannot give a written liability bound, outbound-deny or an acceptable region, or if its isolation turns out not to be a dedicated VM, while Runpod can clear the same rows. Runpod → first
-if it clears the rows and the owner prefers 94 GB headroom over Lambda's published host spec. **Both fail ⇒ NO PROVIDER.** A later reversal is a documented change to this file, not an approval.
+**Ranking status.** The previous conditional ranking is withdrawn as of 2026-11-20 (§2.3). A future candidate may be evaluated only from new, dated evidence and a human review; no provider is preferred or selected.
 
 ## 5. Vendor questions
 
-**Vendor contact is not authorised by this issue.** The owner must separately approve outreach (≤ 2 vendors, 3D gate 4); only then may an operator use this list, privately. No reply or quote exists. Derived from 3E V1–V9 and D§2.3, not a transcript.
-Status for every row: **not asked**. Mapping to 3E: P0-1 ← V1–V3; P0-2 ← V2, V8; P0-3 ← V5; P0-4 ← V4; P0-5 ← V6, D§2.3 Q7–Q8; P0-6 ← V7; P1-1/P1-3 ← D§2.3 Q1, Q3; P1-2 ← V9.
+No new vendor contact is authorised by this update. Issue #31 reports earlier enquiries; the private correspondence is not reproduced here. Before any further outreach, the owner must separately approve it (≤ 2 vendors, 3D gate 4) and the operator must compare these questions against the private correspondence so already-answered questions are not treated as unanswered. This table is a possible follow-up list, not a record that every question is unanswered. Mapping to 3E: P0-1 ← V1–V3; P0-2 ← V2, V8; P0-3 ← V5; P0-4 ← V4; P0-5 ← V6, D§2.3 Q7–Q8; P0-6 ← V7; P1-1/P1-3 ← D§2.3 Q1, Q3; P1-2 ← V9.
 
 | # | Question | Lambda / Runpod specifics | Acceptable evidence | Gates blocked | Owner (role) |
 | --- | --- | --- | --- | --- | --- |
@@ -150,4 +178,4 @@ The seven-gate dependencies stand: gate 5 needs gate 4 reviewed for the chosen p
 ## 7. Validation and next decision
 
 Offline checks for this documentation-only change are recorded in the PR description. They show only that the public contracts remain unready; they say nothing about vendors, GPUs or weights.
-**Next decision for the owner:** approve or decline vendor outreach (§5). Without it, or if P0-1 to P0-4 cannot be answered favourably, the outcome stays NO-GO / NO PROVIDER.
+**Next decision for the owner:** whether to authorize narrowly scoped further due diligence after reviewing existing private correspondence. No outreach, account action, paid preflight, procurement or execution is authorized here. Until every mandatory control has current evidence and the separate human gates are approved, the outcome stays **NO-GO / NO PROVIDER**.
