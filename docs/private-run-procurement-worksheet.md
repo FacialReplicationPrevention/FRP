@@ -31,13 +31,19 @@ verified**.
 | Host RAM | _unset_ | |
 | Scratch/working storage (source, checkpoint ≈ 82 GB by hub-reported sizes — unverified, outputs, logs) | _unset_ | |
 | Checkpoint file count and total bytes at the pinned revision | _unset_ | |
+| Wan 2.1 / pinned software compatibility evidence for the exact GPU and driver | _unset_ | |
 | Network egress controls available (block-all after download?) | _unset_ | |
+| Rental duration, start time, expiry and expiry behaviour | _unset_ | |
+| OS/environment installation time included in rental; usable runtime after setup and checkpoint acquisition/hash | _unset_ | |
+| Automatic renewal/extension defaults and how they are disabled | _unset_ | |
 | Billing granularity, minimum charge | _unset_ | |
-| Hard spend cap and who enforces it **outside Python** (design §8 item 3) | _unset_ | |
+| VAT/tax treatment and all ancillary charges (storage, network, snapshots, setup, termination, support) | _unset_ | |
+| Maximum contractual financial liability, including post-expiry and ancillary charges | _unset_ | |
+| Hard provider-enforced spend cap and who enforces it **outside Python** (design §8 item 3) | _unset_ | |
 | Idle shutdown | _unset_ | |
-| Emergency termination (hard kill independent of the process) and how it is tested | _unset_ | |
+| Provider-side emergency termination (scope, authority, independence from guest, and test evidence) | _unset_ | |
 | Derived `max_attempt_seconds` and the arithmetic (covers load → commit, not weight hashing; design §3.5) | _unset_ | |
-| Provider-side deletion of volumes, snapshots, images, logs | _unset_ | |
+| Data-erasure terms, exceptions, and evidence verifying deletion of volumes, snapshots, images and logs | _unset_ | |
 
 ## 2. Execution-environment digest coverage (design §3.6)
 
