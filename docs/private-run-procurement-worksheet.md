@@ -13,9 +13,9 @@ to it), [runbook](wan21-private-execution-runbook.md), and the machine-readable
 [GPU go/no-go dossier](gpu-go-no-go-dossier.md) (PR 3D, planning only) lists the public-source
 evidence, unverified provider questions, illustrative cost scenarios and per-gate private evidence
 needed to fill this worksheet; it fills nothing in and approves nothing. The
-[provider decision](gpu-provider-decision.md) (PR 3F, planning only) adds a non-binding
-conditional ranking, disqualifiers, prioritised vendor questions and a private handoff order; it
-also fills nothing in and selects no provider.
+[provider decision](gpu-provider-decision.md) (PR 3F, planning only; updated for issue #31) records
+the withdrawal of its historical conditional ranking, current operator-reported blockers and
+unresolved provider evidence. It fills nothing in and selects no provider.
 
 **Pinned targets (expected values only):** `Wan-Video/Wan2.1` @
 `9737cba9c1c3c4d04b33fcad41c111989865d315`; `Wan-AI/Wan2.1-I2V-14B-480P` @
@@ -31,13 +31,19 @@ verified**.
 | Host RAM | _unset_ | |
 | Scratch/working storage (source, checkpoint ≈ 82 GB by hub-reported sizes — unverified, outputs, logs) | _unset_ | |
 | Checkpoint file count and total bytes at the pinned revision | _unset_ | |
+| Wan 2.1 / pinned software compatibility evidence for the exact GPU and driver | _unset_ | |
 | Network egress controls available (block-all after download?) | _unset_ | |
+| Rental duration, start time, expiry and expiry behaviour | _unset_ | |
+| OS/environment installation time included in rental; usable runtime after setup and checkpoint acquisition/hash | _unset_ | |
+| Automatic renewal/extension defaults and how they are disabled | _unset_ | |
 | Billing granularity, minimum charge | _unset_ | |
-| Hard spend cap and who enforces it **outside Python** (design §8 item 3) | _unset_ | |
+| VAT/tax treatment and all ancillary charges (storage, network, snapshots, setup, termination, support) | _unset_ | |
+| Maximum contractual financial liability, including post-expiry and ancillary charges | _unset_ | |
+| Hard provider-enforced spend cap and who enforces it **outside Python** (design §8 item 3) | _unset_ | |
 | Idle shutdown | _unset_ | |
-| Emergency termination (hard kill independent of the process) and how it is tested | _unset_ | |
+| Provider-side emergency termination (scope, authority, independence from guest, and test evidence) | _unset_ | |
 | Derived `max_attempt_seconds` and the arithmetic (covers load → commit, not weight hashing; design §3.5) | _unset_ | |
-| Provider-side deletion of volumes, snapshots, images, logs | _unset_ | |
+| Data-erasure terms, exceptions, and evidence verifying deletion of volumes, snapshots, images and logs | _unset_ | |
 
 ## 2. Execution-environment digest coverage (design §3.6)
 
