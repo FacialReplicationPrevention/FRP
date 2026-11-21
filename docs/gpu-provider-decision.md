@@ -117,6 +117,8 @@ The comparison target remains the pinned Wan 2.1 I2V-14B-480P baseline with the 
 
 **Decision:** The previous Lambda/Runpod ranking remains withdrawn. GPUServerHub is the **first candidate for further human due diligence only**, based on the reported single-GPU 96 GB offering and fixed-duration terms; this is not selection, approval, or a recommendation to procure. Its Blackwell compatibility, total liability, deny-all egress, early emergency kill, deletion verification, and remaining runtime are all unresolved. No candidate passes the mandatory controls; overall status remains **NO-GO / NO PROVIDER**. This changes neither the seven human gates nor the pinned model, baseline controls, private evidence requirements or Milestone 005 block.
 
+**3K update (2026-11-21, issue [#33](https://github.com/FacialReplicationPrevention/FRP/issues/33)).** The Blackwell compatibility matrix, 24-hour time-budget model, control reconciliation, residual vendor questions and reversal criteria are in the [3K appendix](gpu-blackwell-feasibility.md). GPUServerHub pages were unretrievable by the author (DNS); Ada's independent 2026-11-21 re-read (main terms v1.9 r1, daily terms v3 with a v1.8 cross-reference discrepancy) is recorded there as reviewer-attributed evidence. FlashAttention is required on the pinned transformer path (correction to 3E). The decision remains **NO-GO / NO PROVIDER**.
+
 ## 3. Distinctions this decision depends on
 
 | Never equate | With |
