@@ -19,6 +19,10 @@ VRAM, runtime and cost are **not verified**.
 her documentation notes; §7 maps each finding to its resolution and test, §8 lists what cannot be
 resolved in code and is surfaced as a human/private decision instead of weakening a gate.
 
+**Revision 3 / PR 3L:** [Private authorisation and entry-point design](private-authorisation-entry-point-design.md)
+adds the proposed issuer, evidence, revocation and private-entry-point trust boundary. It changes
+no public grant/provider/launcher contract and establishes no gate or live execution.
+
 ## 1. Trust boundaries and actors
 
 | Actor | Trusted? | Design stance |
@@ -487,7 +491,7 @@ private/human dependency.**
 2. **`MAX_GRANT_LIFETIME` = 24 h** as a security bound, not a scientific parameter.
 3. **Reference byte binding**: gate 2/7 records must name the exact reference bytes (SHA-256 held
    only in the private grant); verified **before** load and again before decode.
-4. **Grants are immutable per `execute()` call**: any change under the same id is refused, including
+4. **Grant canonical snapshots are stable per `execute()` call**: any change under the same id is refused, including
    loosening. A legitimate extension is a new call.
 5. The private provider must return the **identical** grant for an unchanged, unrevoked authorisation.
 6. New refusal causes reuse `not_authorised` / `backend_unavailable` / `invalid_input`; finer causes
