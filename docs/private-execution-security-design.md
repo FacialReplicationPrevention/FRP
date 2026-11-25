@@ -19,6 +19,10 @@ VRAM, runtime and cost are **not verified**.
 her documentation notes; §7 maps each finding to its resolution and test, §8 lists what cannot be
 resolved in code and is surfaced as a human/private decision instead of weakening a gate.
 
+**Revision 3 / PR 3L:** [Private authorisation and entry-point design](private-authorisation-entry-point-design.md)
+adds the proposed issuer, evidence, revocation and private-entry-point trust boundary. It changes
+no public grant/provider/launcher contract and establishes no gate or live execution.
+
 ## 1. Trust boundaries and actors
 
 | Actor | Trusted? | Design stance |

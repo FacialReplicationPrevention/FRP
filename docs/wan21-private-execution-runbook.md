@@ -5,6 +5,10 @@ Nothing in this document has been performed. The adapter it describes has run on
 fake of the upstream interface. All seven human gates in the [GPU readiness protocol](gpu-readiness.md)
 are **pending**, and neither this document, a passing test nor a merged PR approves any of them.
 
+**PR 3L trust boundary:** [Private authorisation and entry-point design](private-authorisation-entry-point-design.md)
+maps gate records, issuer/verifier/revocation needs and a non-enabling future private entry point.
+It implements no issuer/provider/launcher and establishes no approval.
+
 **Later planning (PR 3D):** the [GPU go/no-go dossier](gpu-go-no-go-dossier.md) maps the PR 3C
 residual risks and a fail-closed inspection/stop checklist onto this procedure and proposes (does
 not authorise) a single-condition smoke-run spec. It changes no contract in this runbook.
