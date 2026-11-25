@@ -40,9 +40,12 @@ permission nor a scientific result.
 
 ### 2.1 Grant identity is not issuer authenticity
 
-The public `PrivateAuthorisation` contract is immutable only as a Python Pydantic model:
-extra fields are forbidden, the model is frozen, and `grant_sha256()` canonically hashes every
-validated field. It does not prove who created the grant. [code:
+The public `PrivateAuthorisation` contract is field-frozen by Pydantic:
+extra fields are forbidden and `ConfigDict(frozen=True)` prevents field reassignment, and
+`grant_sha256()` canonically hashes every validated field. It is not deeply immutable:
+its `gates`, `expected_files`, and `reference_sha256` values are mutable Python dictionaries.
+The actual replay/loosened-snapshot safeguard is the canonical digest rechecked at A0--A3, not
+object immutability. It does not prove who created the grant. [code:
 `src/frp/baseline/authorisation.py`, `PrivateAuthorisation`, `grant_sha256`]
 
 The current control therefore separates:
@@ -80,8 +83,8 @@ The public readiness schema 1.0 deliberately cannot express granted gates.
 `AuthorisationRequest`/`PrivateAuthorisation` currently bind:
 
 - exact run ID and attempt index;
-- run role in the request (but only indirectly in the grant digest, because the grant does not
-  retain `run_role`);
+- run role in `AuthorisationRequest`; no direct `run_role` field is retained in
+  `PrivateAuthorisation`;
 - mock/live executor mode;
 - canonical manifest and generation-control digests;
 - pinned source commit and checkpoint revision;
@@ -92,11 +95,14 @@ The public readiness schema 1.0 deliberately cannot express granted gates.
 - attempt cap and attempt wall-clock cap;
 - issued/expiry time.
 
-Not currently represented and not silently inferable: the future private evidence-set ID and
+Not currently represented and not silently inferable: the exact grant role binding and future
+private evidence-set ID and
 issuer, evidence snapshot digest and revocation epoch; run role on the grant itself; exact
 provenance of the approved reference-provider read; exact provider egress/Kill controls;
 provider/hypervisor identity; and output namespace attestation beyond the artefact URI.
-They need review before a trust-boundary extension.
+The manifest digest plus exact planned-run equality may indirectly constrain the role through
+the plan, but that is distinct from a grant field binding the role. These gaps need review
+before a trust-boundary extension.
 
 ## 3. Proposed private evidence, issuance and revocation boundary
 
@@ -145,6 +151,9 @@ and algorithm:
 - key ID/version and rotation plan;
 - a revocation source separate from the issuer and executor;
 - record/warrant verification online or by an authenticated signed revocation snapshot.
+- for future offline signed snapshots, an independently trusted time/freshness source and a
+  separately reviewed maximum staleness; both values are currently undecided. An unavailable,
+  untrusted or stale freshness source denies issuance and re-authorisation.
 
 No production key, algorithm claim, certificate or signed sample belongs in this repository.
 The public Pydantic model's `grant_sha256` can detect a changed snapshot but cannot authenticate
@@ -177,8 +186,8 @@ these controls.
 | --- | --- | --- |
 | Missing or duplicate gate/evidence | Reject at evidence assembly; no grant. | Public model requires all seven gate IDs once. [code] |
 | Conflicting/superseded gate record | Reject snapshot; no grant. | Not represented. [unresolved] |
-| Stale evidence or withdrawn gate | Reject before A0 and re-check revocation at every point. | Revocation requires provider behavior; unchanged snapshot is re-asked. [code/CPU-fake] |
-| Revocation source unavailable | Reject issuance and deny re-authorisation. | Not implemented; fail closed can only be provider denial/exception. [unresolved] |
+| Stale evidence or withdrawn gate | Reject before executor A0 and re-check revocation at every point. A stale or unavailable offline snapshot also denies. | Revocation requires provider behavior; unchanged snapshot is re-asked. [code/CPU-fake] |
+| Revocation source unavailable or freshness untrusted | Reject issuance and deny re-authorisation; no stale offline fallback. | Not implemented; fail closed can only be provider denial/exception. [unresolved] |
 | Unknown issuer or failed signature | Reject no-grant. | Not represented. [unresolved] |
 | Malformed request/grant | Reject and expose fixed failure text. | Pydantic strict validation and fixed authorisation problems. [code/CPU-fake] |
 | Not-yet-valid, expired or validity >24 hours | Reject. | Pydantic and `authorisation_problems` enforce window/24-hour maximum. [code/CPU-fake] |
@@ -198,7 +207,8 @@ allowed to reuse an old attempt reservation.
 
 ## 5. Existing A0–A3 call order
 
-The public executor already defines:
+The public executor already defines the mandatory checkpoints inside
+`Wan21BaselineExecutor.execute()`:
 
 1. **Run-plan exactness** before authorisation or reference lookup.
 2. **Manifest execution readiness**.
@@ -215,7 +225,8 @@ The public executor already defines:
 13. Build the output record, commit, then stop/clock-check again.
 14. Cleanup; if cleanup fails or a post-commit fault occurs, rollback and leave no final/partial.
 
-[code: `src/frp/baseline/executor.py`] A3 is not an authentication check and A0–A3 do not verify
+[code: `src/frp/baseline/executor.py`] A0 and A1 are not entry-point operations callable before
+`execute()`; they are re-checks performed by the existing executor. A3 is not an authentication check and A0–A3 do not verify
 an issuer or consult revocation state. The private provider must supply those properties.
 
 ## 6. Future private entry point — design only
@@ -226,25 +237,41 @@ enabling example.
 
 ### 6.1 Ordered preflight sequence
 
+This sequence distinguishes a private external preflight from A0--A3. It does not propose moving
+A0 or A1 into the launcher or making evidence verification in Python a substitute for the executor.
+
 1. Start `python -I -B` with a fixed interpreter, `PATH`, no startup config, no
    `PYTHON*`-derived imports, no `LD_PRELOAD`, `LD_AUDIT`, `IMAGEIO_FFMPEG_EXE`,
    `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD`, or remote prompt-extension variables.
 2. Independent launcher verifies a provider/hypervisor kill handle and hard billing cap.
-3. Private provider loads and authenticates all seven current gate evidence records.
-4. Verifies issuer/revocation state and assembles an exact run request.
-5. Calls A0 and fails before any real reference open or ML import.
-6. Verifies local source cleanliness/pin and image/container/interpreter/package digest.
-7. Hashes every local checkpoint file against the private expected inventory and exact revision.
-8. Constructs or reuses `LocalPrivateStore` only after private local-volume attestation and
-   namespace binding.
-9. Constructs a private reference provider, then existing executor and gated adapter/runtime
-   only after all checks pass.
-10. Run A1, bounded private reference read, backend check, load, A2 and generation.
-11. Stage output privately, run A3 and post-commit checks, then cleanup.
+3. Complete any separately permitted checkpoint-acquisition phase only after the checkpoint
+   download/hash gate and required storage/provider gates. Acquisition is not run authorization.
+4. Private evidence verification loads and authenticates all seven current gate records and
+   verifies issuer, trusted freshness/revocation state and exact role/evidence scope. Failure
+   stops before runtime composition.
+5. Provider/hypervisor-level deny-all outbound isolation is configured and independently
+   verified for IPv4, IPv6, DNS, provider metadata/service routes and alternate interfaces.
+   The only permitted egress is the explicitly approved operator control channel.
+6. Fail closed if isolation evidence is unavailable, stale, mismatched or unverifiable; the
+   provider/hypervisor kill and billing controls must already be active.
+7. Only after step 6, verify local source cleanliness/pin and image/container/interpreter/
+   package digest, and hash every local checkpoint file against the private expected inventory
+   and exact revision.
+8. Attest the store, checkpoint and source volumes as local block storage; construct or reuse
+   `LocalPrivateStore` only after namespace binding.
+9. Compose inert dependencies: private reference provider, existing gated adapter/runtime and
+   `Wan21BaselineExecutor`, without treating construction or successful evidence preflight as
+   authorisation. This composition must not import upstream ML packages or open a reference.
+10. Invoke `execute(run, attempt_index)`. It performs exact-run and manifest checks, then A0,
+    `_prepare()`, A1, private reference lookup/check-attempt, load, A2, generation and A3.
+    A0 and A1 re-use the private provider and identical canonical grant; external evidence
+    preflight does not replace them.
+11. Stage output privately; A3 and the post-commit checks run inside the executor, then cleanup.
 12. Emit only privacy-safe audit metadata; delete or retain by the approved lifecycle.
 
-No private reference, upstream import, model package, weight load or GPU operation precedes
-the evidence and executor gates. The in-process guards supplement but do not replace provider
+No participant reference ingress/read or upstream load precedes step 6. No private reference,
+upstream import, model package, weight load or GPU operation precedes the evidence, provider-
+isolation and executor gates. The in-process guards supplement but do not replace provider
 egress isolation and an independent provider/hypervisor stop.
 
 ### 6.2 Responsibilities
@@ -282,7 +309,7 @@ and synthetic gaps needed by this design.
 | Denial before backend/reference activity | `tests/test_baseline_executor.py`: deny-all/default |
 | Provider exception/unavailable authority | `tests/test_baseline_executor.py`: provider exception |
 | Scope mismatch | `tests/test_baseline_executor.py`: run/plan/pin/manifest mismatches |
-| Stale/not-yet-valid/expired/malformed grant | `tests/test_private_execution_security.py`: immutable and malformed-grant tests |
+| Stale/not-yet-valid/expired/malformed grant | `tests/test_private_execution_security.py`: canonical-snapshot and malformed-grant tests |
 | Attempt mismatch | `tests/test_private_execution_security.py`: beyond authorised attempt |
 | Revocation at A0–A3 | `tests/test_private_execution_security.py`: revocation at each authorisation point |
 | Changed grant under same ID | `tests/test_private_execution_security.py`: mutation matrix at A1–A3 |

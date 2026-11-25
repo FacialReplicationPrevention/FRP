@@ -1,6 +1,6 @@
 # FRP roadmap
 
-**Last updated:** 2026-11-21
+**Last updated:** 2026-11-25
 **Operating principle:** Establish reliable measurements and a reproducible experiment before committing resources to intrinsic model protection or tamper resistance.
 
 ## Progress overview

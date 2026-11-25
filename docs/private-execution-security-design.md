@@ -491,7 +491,7 @@ private/human dependency.**
 2. **`MAX_GRANT_LIFETIME` = 24 h** as a security bound, not a scientific parameter.
 3. **Reference byte binding**: gate 2/7 records must name the exact reference bytes (SHA-256 held
    only in the private grant); verified **before** load and again before decode.
-4. **Grants are immutable per `execute()` call**: any change under the same id is refused, including
+4. **Grant canonical snapshots are stable per `execute()` call**: any change under the same id is refused, including
    loosening. A legitimate extension is a new call.
 5. The private provider must return the **identical** grant for an unchanged, unrevoked authorisation.
 6. New refusal causes reuse `not_authorised` / `backend_unavailable` / `invalid_input`; finer causes
